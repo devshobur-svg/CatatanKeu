@@ -8,7 +8,7 @@ import {
 import { 
   PlusCircle, ArrowUpCircle, ArrowDownCircle, 
   LogOut, Trash2, Wallet as WalletIcon, X, Sun, Moon, 
-  FileText, Home, User, Send, Bot, Search, Activity, ChevronLeft, Tag, Languages, Eye, EyeOff, Delete, Globe, AlertTriangle, ChevronDown, ChevronUp, Camera, Sparkles, Loader2, ChevronRight, Settings, ShieldCheck, Database, Info, CreditCard, ArrowRightLeft, Plus
+  FileText, Home, User, Send, Bot, Search, Activity, ChevronLeft, Tag, Languages, Eye, EyeOff, Delete, Globe, AlertTriangle, ChevronDown, ChevronUp, Camera, Sparkles, Loader2, ChevronRight, Settings, ShieldCheck, Database, Info, CreditCard, ArrowRightLeft, Plus, Landmark, Coins, TrendingDown, PieChart, Layers, ArrowDown, Edit3, Check
 } from "lucide-react";
 import { LineChart, Line, ResponsiveContainer } from "recharts"; 
 import { createWorker } from 'tesseract.js'; 
@@ -35,7 +35,12 @@ const TRANSLATIONS = {
     account: "Akun",
     preferences: "Preferensi",
     exportData: "Ekspor Data",
-    transfer: "Transfer"
+    transfer: "Transfer",
+    remaining: "Sisa",
+    myWallets: "Dompet Saya",
+    healthScore: "Kesehatan Keuangan",
+    topSpending: "Pengeluaran Terbesar",
+    catTitle: "Kategori & Budget"
   },
   en: {
     income: "Income",
@@ -55,7 +60,12 @@ const TRANSLATIONS = {
     account: "Account",
     preferences: "Preferences",
     exportData: "Export Data",
-    transfer: "Transfer"
+    transfer: "Transfer",
+    remaining: "Remaining",
+    myWallets: "My Wallets",
+    healthScore: "Financial Health",
+    topSpending: "Top Spending",
+    catTitle: "Category & Budget"
   }
 };
 
@@ -82,6 +92,7 @@ function App() {
   const [newCatName, setNewCatName] = useState("");
   const [newCatLimit, setNewCatLimit] = useState("");
   const [newWalletName, setNewWalletName] = useState("");
+  const [newWalletType, setNewWalletType] = useState("bank");
   
   const [showInlineCatInput, setShowInlineCatInput] = useState(false);
   const [showInlineWalletInput, setShowInlineWalletInput] = useState(false);
@@ -89,6 +100,10 @@ function App() {
 
   const [form, setForm] = useState({ amount: "", category: "", type: "expense", walletId: "" });
   const [transferForm, setTransferForm] = useState({ amount: "", fromWalletId: "", toWalletId: "" });
+
+  // Special State for Category Improvement
+  const [editingCategoryId, setEditingCategoryId] = useState(null);
+  const [tempLimit, setTempLimit] = useState("");
 
   const timeoutRef = useRef(null);
   const t = TRANSLATIONS[lang];
@@ -105,21 +120,11 @@ function App() {
 
   useEffect(() => {
     if (user) {
-      window.addEventListener("mousemove", resetTimer);
-      window.addEventListener("mousedown", resetTimer);
-      window.addEventListener("keypress", resetTimer);
-      window.addEventListener("scroll", resetTimer);
-      window.addEventListener("touchstart", resetTimer);
+      const events = ["mousemove", "mousedown", "keypress", "scroll", "touchstart"];
+      events.forEach(e => window.addEventListener(e, resetTimer));
       resetTimer();
+      return () => events.forEach(e => window.removeEventListener(e, resetTimer));
     }
-    return () => {
-      window.removeEventListener("mousemove", resetTimer);
-      window.removeEventListener("mousedown", resetTimer);
-      window.removeEventListener("keypress", resetTimer);
-      window.removeEventListener("scroll", resetTimer);
-      window.removeEventListener("touchstart", resetTimer);
-      if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    };
   }, [user]);
 
   useEffect(() => {
@@ -156,11 +161,19 @@ function App() {
     return () => { unsubWallets(); unsubCats(); unsubAll(); };
   }, [user]);
 
+  // CORE LOGIC
   const stats = useMemo(() => {
     const inc = allTransactions.filter(tr => tr.type === 'income').reduce((a, b) => a + (Number(b.amount) || 0), 0);
     const exp = allTransactions.filter(tr => tr.type === 'expense').reduce((a, b) => a + (Number(b.amount) || 0), 0);
     return { income: inc, expense: exp, balance: inc - exp };
   }, [allTransactions]);
+
+  const walletData = useMemo(() => {
+    return wallets.map(w => {
+      const bal = allTransactions.filter(t => t.walletId === w.id).reduce((a, b) => a + (b.type === 'income' ? Number(b.amount) : -Number(b.amount)), 0);
+      return { ...w, balance: bal };
+    });
+  }, [wallets, allTransactions]);
 
   const categoryStats = useMemo(() => {
     const now = new Date();
@@ -170,11 +183,8 @@ function App() {
         return tr.category === cat.name && tr.type === 'expense' && trDate.getMonth() === now.getMonth() && trDate.getFullYear() === now.getFullYear();
       });
       const totalSpent = transactionsThisMonth.reduce((sum, tr) => sum + (Number(tr.amount) || 0), 0);
-      const sparkData = transactionsThisMonth.slice(0, 6).reverse().map((tr) => ({ amount: Number(tr.amount) }));
-      return { 
-        ...cat, spent: totalSpent, limit: Number(cat.limit) || 0,
-        history: sparkData.length > 1 ? sparkData : [{ amount: 10 }, { amount: 10 }] 
-      };
+      const limit = Number(cat.limit) || 0;
+      return { ...cat, spent: totalSpent, limit: limit, remaining: limit - totalSpent };
     });
   }, [categories, allTransactions]);
 
@@ -185,9 +195,95 @@ function App() {
     return showAllHistory ? filtered : filtered.slice(0, 3);
   }, [allTransactions, searchQuery, showAllHistory]);
 
+  const topSpendingCategory = useMemo(() => {
+    if (categoryStats.length === 0) return null;
+    return [...categoryStats].sort((a, b) => b.spent - a.spent)[0];
+  }, [categoryStats]);
+
+  const healthScore = useMemo(() => {
+    if (stats.income === 0) return 0;
+    const score = Math.max(0, 100 - (stats.expense / stats.income * 100));
+    return Math.round(score);
+  }, [stats]);
+
+  // UTILS
   const formatRupiah = (value) => {
-    if (!value || value === "0") return "0";
-    return Number(value).toLocaleString('id-ID');
+    if (!value && value !== 0) return "0";
+    const cleanValue = value.toString().replace(/\D/g, '');
+    return Number(cleanValue).toLocaleString('id-ID');
+  };
+
+  // PDF EXPORT HANDLER
+  const exportPDF = () => {
+    const doc = new jsPDF();
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const today = new Date().toLocaleDateString('id-ID', { year: 'numeric', month: 'long', day: 'numeric' });
+
+    const filteredData = [...allTransactions].filter(tr => {
+      const trDate = tr.createdAt?.seconds ? new Date(tr.createdAt.seconds * 1000).toISOString().split('T')[0] : "";
+      return trDate >= startDate && trDate <= endDate;
+    }).sort((a, b) => a.createdAt.seconds - b.createdAt.seconds);
+
+    // Header Design
+    doc.setFillColor(14, 165, 233); doc.rect(0, 0, pageWidth, 40, 'F');
+    doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(22);
+    doc.text("FinansialKu.", 14, 22);
+    doc.setFontSize(10); doc.setFont("helvetica", "normal");
+    doc.text("Electronic Transaction Statement", 14, 30);
+
+    // User Profile Pojok Kanan
+    doc.textAlign = "right";
+    doc.setFontSize(9);
+    doc.text(`Nasabah: ${user.displayName || user.email}`, pageWidth - 14, 18, { align: 'right' });
+    doc.text(`Periode: ${startDate} - ${endDate}`, pageWidth - 14, 24, { align: 'right' });
+    doc.text(`Generated on: ${today}`, pageWidth - 14, 30, { align: 'right' });
+    doc.textAlign = "left";
+
+    let currentY = 50;
+
+    // Summary Global
+    const totalPemasukan = filteredData.filter(t => t.type === 'income').reduce((a, b) => a + Number(b.amount), 0);
+    const totalPengeluaran = filteredData.filter(t => t.type === 'expense').reduce((a, b) => a + Number(b.amount), 0);
+
+    doc.setFillColor(241, 245, 249); doc.roundedRect(14, currentY, pageWidth - 28, 30, 3, 3, 'F');
+    doc.setTextColor(71, 85, 105); doc.setFontSize(8); doc.setFont("helvetica", "bold");
+    doc.text("RINGKASAN MUTASI GLOBAL", 20, currentY + 8);
+    doc.setTextColor(34, 197, 94); doc.text(`(+) TOTAL CR (MASUK): Rp ${totalPemasukan.toLocaleString('id-ID')}`, 20, currentY + 18);
+    doc.setTextColor(239, 68, 68); doc.text(`(-) TOTAL DB (KELUAR): Rp ${totalPengeluaran.toLocaleString('id-ID')}`, pageWidth - 100, currentY + 18);
+    doc.setTextColor(14, 165, 233); doc.text(`NET MUTASI: Rp ${(totalPemasukan - totalPengeluaran).toLocaleString('id-ID')}`, 20, currentY + 25);
+
+    currentY += 45;
+
+    // Statement per Wallet
+    wallets.forEach((wallet) => {
+      const walletTx = filteredData.filter(t => t.walletId === wallet.id);
+      if (walletTx.length > 0) {
+        if (currentY > 240) { doc.addPage(); currentY = 20; }
+        doc.setFillColor(51, 65, 85); doc.rect(14, currentY, pageWidth - 28, 8, 'F');
+        doc.setTextColor(255, 255, 255); doc.setFontSize(9); doc.setFont("helvetica", "bold");
+        doc.text(`RINCIAN TRANSAKSI - ${wallet.name.toUpperCase()}`, 18, currentY + 5.5);
+
+        autoTable(doc, {
+          startY: currentY + 8,
+          head: [['Tanggal', 'Kategori', 'Tipe', 'Nominal', 'Status']],
+          body: walletTx.map(tr => [
+            new Date(tr.createdAt.seconds * 1000).toLocaleDateString('id-ID'),
+            tr.category.toUpperCase(),
+            tr.type === 'income' ? 'CR' : 'DB',
+            `Rp ${Number(tr.amount).toLocaleString('id-ID')}`,
+            'SUCCESS'
+          ]),
+          theme: 'grid',
+          styles: { fontSize: 8 },
+          headStyles: { fillColor: [241, 245, 249], textColor: [51, 65, 85] },
+          didDrawPage: (data) => { currentY = data.cursor.y; }
+        });
+        currentY = doc.lastAutoTable.finalY + 15;
+      }
+    });
+
+    doc.save(`E-Statement_FinansialKu_${startDate}.pdf`);
+    setShowExportModal(false);
   };
 
   const handleScanFile = async (e) => {
@@ -198,126 +294,54 @@ function App() {
       const worker = await createWorker('eng');
       const { data: { text } } = await worker.recognize(file);
       await worker.terminate();
-      const cleanText = text.replace(/[.,]/g, '');
-      const matches = cleanText.match(/\d+/g);
-      if (matches) {
-        const amounts = matches.map(Number).filter(n => n > 1000);
-        const detectedAmount = Math.max(...amounts);
-        if (detectedAmount && detectedAmount !== -Infinity) {
-          setForm({ ...form, amount: detectedAmount.toString(), type: "expense" });
-        }
-      }
-    } catch (err) { alert("Error: " + err.message); } finally {
+      const detectedAmount = Math.max(...(text.replace(/[.,]/g, '').match(/\d+/g)?.map(Number).filter(n => n > 1000) || [0]));
+      if (detectedAmount > 0) setForm({ ...form, amount: detectedAmount.toString(), type: "expense" });
+    } catch (err) { alert(err.message); } finally {
       setIsScanning(false); setShowScanner(false); setShowAddTransaction(true);
     }
   };
 
-  const exportPDF = () => {
-    const doc = new jsPDF();
-    const pageWidth = doc.internal.pageSize.getWidth();
-    const filteredData = allTransactions.filter(tr => {
-      const trDate = tr.createdAt?.seconds ? new Date(tr.createdAt.seconds * 1000).toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
-      return trDate >= startDate && trDate <= endDate;
-    });
-
-    const periodInc = filteredData.filter(tr => tr.type === 'income').reduce((a, b) => a + Number(b.amount), 0);
-    const periodExp = filteredData.filter(tr => tr.type === 'expense').reduce((a, b) => a + Number(b.amount), 0);
-    const periodBalance = periodInc - periodExp;
-
-    // Design Header PDF
-    doc.setFillColor(14, 165, 233); doc.rect(0, 0, pageWidth, 45, 'F');
-    doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(24); doc.text("FinansialKu.", 14, 25);
-    doc.setFontSize(10); doc.setFont("helvetica", "normal");
-    doc.text(`Periode Laporan: ${startDate} s/d ${endDate}`, 14, 37);
-
-    // Summary Box
-    doc.setFillColor(248, 250, 252); doc.roundedRect(14, 55, pageWidth - 28, 35, 4, 4, 'F');
-    doc.setTextColor(100, 116, 139); doc.setFontSize(8); doc.text("PEMASUKAN", 20, 65); doc.text("PENGELUARAN", (pageWidth / 2) + 5, 65);
-    doc.setFontSize(13); doc.setTextColor(34, 197, 94); doc.text(`Rp ${periodInc.toLocaleString('id-ID')}`, 20, 73);
-    doc.setTextColor(239, 68, 68); doc.text(`Rp ${periodExp.toLocaleString('id-ID')}`, (pageWidth / 2) + 5, 73);
-    doc.setTextColor(14, 165, 233); doc.setFontSize(10); doc.text(`NET SALDO PERIODE INI: Rp ${periodBalance.toLocaleString('id-ID')}`, 20, 84);
-
-    let currentY = 105;
-
-    // Grouping by Wallet (FIXED LOGIC)
-    wallets.forEach((wallet) => {
-      const walletTransactions = filteredData.filter(t => t.walletId === wallet.id);
-      if (walletTransactions.length > 0) {
-        if (currentY > 250) { doc.addPage(); currentY = 20; }
-        doc.setTextColor(30, 41, 59); doc.setFontSize(12); doc.setFont("helvetica", "bold");
-        doc.text(`DOMPET: ${wallet.name.toUpperCase()}`, 14, currentY);
-        
-        autoTable(doc, {
-          startY: currentY + 5,
-          head: [['Tanggal', 'Kategori', 'Tipe', 'Nominal']],
-          body: walletTransactions.map(tr => [
-            new Date(tr.createdAt.seconds * 1000).toLocaleDateString('id-ID'), 
-            tr.category.toUpperCase(), 
-            tr.type === 'income' ? 'MASUK' : 'KELUAR', 
-            `Rp ${Number(tr.amount).toLocaleString('id-ID')}`
-          ]),
-          theme: 'striped',
-          headStyles: { fillColor: [14, 165, 233] },
-          margin: { left: 14, right: 14 },
-          didDrawPage: (data) => { currentY = data.cursor.y; }
-        });
-        currentY = doc.lastAutoTable.finalY + 15;
-      }
-    });
-
-    doc.save(`Laporan_FinansialKu_${startDate}_to_${endDate}.pdf`);
-    setShowExportModal(false);
-  };
-
   const handleNumpad = (val) => {
-    setForm(prev => {
-      if (val === "delete") return { ...prev, amount: prev.amount.slice(0, -1) };
-      if (prev.amount.length > 10) return prev;
-      return { ...prev, amount: prev.amount + val };
-    });
+    setForm(prev => (val === "delete" ? { ...prev, amount: prev.amount.slice(0, -1) } : prev.amount.length < 11 ? { ...prev, amount: prev.amount + val } : prev));
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const handleSubmit = async () => {
     if (!form.amount || !form.category || !form.walletId) return alert("Lengkapi data!");
-    try {
-      await addDoc(collection(db, "transactions"), { ...form, amount: Number(form.amount), userId: user.uid, createdAt: new Date() });
-      setShowAddTransaction(false);
-      setForm({ ...form, amount: "", category: "", type: "expense", walletId: "" });
-      setActiveTab("home");
-    } catch (err) { alert(err.message); }
+    await addDoc(collection(db, "transactions"), { ...form, amount: Number(form.amount), userId: user.uid, createdAt: new Date() });
+    setShowAddTransaction(false); setForm({ amount: "", category: "", type: "expense", walletId: "" });
+    setActiveTab("home");
   };
 
   const handleTransfer = async () => {
     const { amount, fromWalletId, toWalletId } = transferForm;
     if (!amount || !fromWalletId || !toWalletId || fromWalletId === toWalletId) return alert("Cek data transfer!");
-    try {
-      const numAmount = Number(amount);
-      const now = new Date();
-      await addDoc(collection(db, "transactions"), { amount: numAmount, type: "expense", category: "TRANSFER", walletId: fromWalletId, userId: user.uid, createdAt: now });
-      await addDoc(collection(db, "transactions"), { amount: numAmount, type: "income", category: "TRANSFER", walletId: toWalletId, userId: user.uid, createdAt: now });
-      setShowTransferModal(false);
-      setTransferForm({ amount: "", fromWalletId: "", toWalletId: "" });
-    } catch (err) { alert(err.message); }
+    const now = new Date();
+    await addDoc(collection(db, "transactions"), { amount: Number(amount), type: "expense", category: "TRANSFER", walletId: fromWalletId, userId: user.uid, createdAt: now });
+    await addDoc(collection(db, "transactions"), { amount: Number(amount), type: "income", category: "TRANSFER", walletId: toWalletId, userId: user.uid, createdAt: now });
+    setShowTransferModal(false); setTransferForm({ amount: "", fromWalletId: "", toWalletId: "" });
   };
 
   const handleQuickAdd = async (type) => {
     if (!inlineValue) return;
-    try {
-        if (type === 'cat') {
-            await addDoc(collection(db, "categories"), { name: inlineValue, limit: 0, userId: user.uid, createdAt: new Date() });
-            setForm({...form, category: inlineValue});
-            setShowInlineCatInput(false);
-        } else {
-            const docRef = await addDoc(collection(db, "wallets"), { name: inlineValue, userId: user.uid, createdAt: new Date() });
-            setForm({...form, walletId: docRef.id});
-            setShowInlineWalletInput(false);
-        }
-        setInlineValue("");
-    } catch (err) { alert(err.message); }
+    if (type === 'cat') {
+      await addDoc(collection(db, "categories"), { name: inlineValue, limit: 0, userId: user.uid, createdAt: new Date() });
+      setForm({...form, category: inlineValue}); setShowInlineCatInput(false);
+    } else {
+      const docRef = await addDoc(collection(db, "wallets"), { name: inlineValue, type: "cash", userId: user.uid, createdAt: new Date() });
+      setForm({...form, walletId: docRef.id}); setShowInlineWalletInput(false);
+    }
+    setInlineValue("");
   };
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center bg-sky-500 text-white font-black italic text-2xl">FINANSIALKU</div>;
+  // Improved Function for Category Tab
+  const handleUpdateLimit = async (id) => {
+    if (tempLimit === "") return setEditingCategoryId(null);
+    await updateDoc(doc(db, "categories", id), { limit: Number(tempLimit) });
+    setEditingCategoryId(null);
+    setTempLimit("");
+  };
+
+  if (loading) return <div className="min-h-screen flex items-center justify-center bg-sky-500 text-white font-black italic text-2xl animate-pulse">FINANSIALKU</div>;
   if (!user) return <Login />;
 
   return (
@@ -328,7 +352,7 @@ function App() {
         <div className="flex justify-between items-center mb-8">
           <div className="flex items-center gap-3"><div className="w-10 h-10 bg-white rounded-2xl flex items-center justify-center text-sky-500 font-black shadow-lg">F</div><h1 className="text-white font-black text-2xl italic tracking-tighter">FinansialKu.</h1></div>
           <div className="flex gap-2">
-            <button onClick={() => setLang(lang === "id" ? "en" : "id")} className="text-white/90 p-2.5 bg-white/10 rounded-2xl active:scale-90 font-bold text-xs uppercase"><Globe size={18}/> {lang}</button>
+            <button onClick={() => setLang(lang === "id" ? "en" : "id")} className="text-white/90 p-2.5 bg-white/10 rounded-2xl active:scale-90 font-bold text-xs uppercase flex items-center gap-2"><Globe size={18}/> {lang}</button>
             <button onClick={() => setDarkMode(!darkMode)} className="text-white/90 p-2.5 bg-white/10 rounded-2xl active:scale-90">{darkMode ? <Sun size={20}/> : <Moon size={20}/>}</button>
             <button onClick={() => signOut(auth)} className="text-white/90 p-2.5 bg-white/10 rounded-2xl active:scale-90"><LogOut size={20}/></button>
           </div>
@@ -339,9 +363,10 @@ function App() {
         </div>
       </div>
 
-      <div className="flex-1 px-5 -mt-24 z-30 pb-32 overflow-y-auto no-scrollbar" onTouchStart={resetTimer}>
+      <div className="flex-1 px-5 -mt-24 z-30 pb-32 overflow-y-auto no-scrollbar">
         {activeTab === "home" && (
             <div className="space-y-6 animate-in fade-in duration-500">
+                {/* BALANCE CARD */}
                 <div className={`rounded-[2.5rem] p-8 shadow-2xl border ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-50'}`}>
                     <div className="space-y-4">
                         <div className="flex justify-between items-center text-[10px] font-black uppercase text-slate-400"><span>{t.income}</span><span className="text-green-500 ml-2 truncate">Rp {formatRupiah(stats.income)}</span></div>
@@ -352,74 +377,45 @@ function App() {
                                 <span className={`text-sky-500 font-black italic tracking-tighter leading-tight break-all ${showBalance ? 'text-2xl sm:text-3xl' : 'text-3xl'}`}>
                                     {showBalance ? `Rp ${formatRupiah(stats.balance)}` : "Rp ••••••"}
                                 </span>
-                                <button onClick={() => {setShowBalance(!showBalance); resetTimer();}} className="text-slate-300 hover:text-sky-500 transition-colors p-2 shrink-0">
-                                    {showBalance ? <EyeOff size={20}/> : <Eye size={20}/>}
-                                </button>
+                                <button onClick={() => setShowBalance(!showBalance)} className="text-slate-300 hover:text-sky-500 transition-colors p-2 shrink-0">{showBalance ? <EyeOff size={20}/> : <Eye size={20}/>}</button>
                             </div>
                         </div>
                     </div>
                 </div>
                 
                 <div className="grid grid-cols-4 gap-2">
-                    <button onClick={() => {setShowScanner(true); resetTimer();}} className="bg-indigo-500 text-white p-3 rounded-2xl flex flex-col items-center gap-2 font-black text-[7px] uppercase tracking-widest shadow-lg active:scale-95 transition-all"><Camera size={20}/> SCAN</button>
-                    <button onClick={() => {setShowTransferModal(true); resetTimer();}} className="bg-teal-500 text-white p-3 rounded-2xl flex flex-col items-center gap-2 font-black text-[7px] uppercase tracking-widest shadow-lg active:scale-95 transition-all"><ArrowRightLeft size={20}/> TRANSFER</button>
-                    <button onClick={() => {setActiveTab("wallet"); resetTimer();}} className="bg-sky-500 text-white p-3 rounded-2xl flex flex-col items-center gap-2 font-black text-[7px] uppercase tracking-widest shadow-lg active:scale-95 transition-all"><WalletIcon size={20}/> WALLET</button>
-                    <button onClick={() => {setShowExportModal(true); resetTimer();}} className="bg-orange-500 text-white p-3 rounded-2xl flex flex-col items-center gap-2 font-black text-[7px] uppercase tracking-widest shadow-lg active:scale-95 transition-all"><FileText size={20}/> REPORT</button>
+                    <button onClick={() => setShowScanner(true)} className="bg-indigo-500 text-white p-3 rounded-2xl flex flex-col items-center gap-2 font-black text-[7px] uppercase tracking-widest shadow-lg active:scale-95 transition-all"><Camera size={20}/> SCAN</button>
+                    <button onClick={() => setShowTransferModal(true)} className="bg-teal-500 text-white p-3 rounded-2xl flex flex-col items-center gap-2 font-black text-[7px] uppercase tracking-widest shadow-lg active:scale-95 transition-all"><ArrowRightLeft size={20}/> TRANSFER</button>
+                    <button onClick={() => setActiveTab("wallet")} className="bg-sky-500 text-white p-3 rounded-2xl flex flex-col items-center gap-2 font-black text-[7px] uppercase tracking-widest shadow-lg active:scale-95 transition-all"><WalletIcon size={20}/> WALLET</button>
+                    <button onClick={() => setShowExportModal(true)} className="bg-orange-500 text-white p-3 rounded-2xl flex flex-col items-center gap-2 font-black text-[7px] uppercase tracking-widest shadow-lg active:scale-95 transition-all"><FileText size={20}/> REPORT</button>
                 </div>
 
-                {/* BUDGETING SECTION */}
-                {categoryStats.some(c => c.limit > 0) && (
-                <div className="space-y-4"><h3 className="font-black text-xs px-2 opacity-50 uppercase italic tracking-widest">Monthly Budget</h3>
-                    <div className="flex gap-4 overflow-x-auto no-scrollbar pb-2">
-                        {categoryStats.filter(c => c.limit > 0).map(cat => {
-                            const percent = Math.min((cat.spent / cat.limit) * 100, 100);
-                            const isOver = cat.spent > cat.limit;
-                            return (
-                                <div key={cat.id} className={`flex-shrink-0 w-44 p-5 rounded-[2rem] border transition-all ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white shadow-sm'}`}>
-                                    <div className="flex justify-between items-start mb-2 gap-2 text-sky-500 font-black uppercase text-[10px] truncate">{cat.name} {isOver && <AlertTriangle size={14} className="text-red-500 shrink-0 animate-pulse"/>}</div>
-                                    <p className="text-[11px] font-black mb-1">Rp {formatRupiah(cat.spent)}</p>
-                                    <div className="flex items-end justify-between mb-3 h-6">
-                                        <p className="text-[8px] font-bold opacity-40 uppercase italic">Limit: Rp {formatRupiah(cat.limit)}</p>
-                                        <div className="w-12 h-5"><ResponsiveContainer width="100%" height="100%"><LineChart data={cat.history}><Line type="monotone" dataKey="amount" stroke={isOver ? "#ef4444" : "#0ea5e9"} strokeWidth={2} dot={false}/></LineChart></ResponsiveContainer></div>
-                                    </div>
-                                    <div className="w-full bg-slate-100 dark:bg-slate-700 h-2 rounded-full overflow-hidden"><div className={`h-full transition-all duration-700 ${isOver ? 'bg-red-500' : 'bg-sky-500'}`} style={{width: `${percent}%`}}></div></div>
+                <div className="space-y-4">
+                    <h3 className="font-black text-xs px-2 opacity-50 uppercase italic tracking-widest">Monthly Budget Control</h3>
+                    <div className="flex gap-4 overflow-x-auto no-scrollbar pb-2 px-1">
+                        {categoryStats.filter(c => c.limit > 0).map(cat => (
+                            <div key={cat.id} className={`flex-shrink-0 w-52 p-6 rounded-[2.5rem] border transition-all ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white shadow-lg'}`}>
+                                <div className="flex justify-between items-start mb-3 gap-2"><div className="font-black text-sky-500 uppercase text-[11px] truncate tracking-tighter">{cat.name}</div>{cat.remaining < 0 && <AlertTriangle size={16} className="text-red-500 animate-pulse shrink-0"/>}</div>
+                                <div className="space-y-1 mb-4">
+                                    <div className="flex justify-between items-baseline"><span className="text-[9px] font-bold opacity-40 uppercase">Spent</span><span className="text-xs font-black">Rp {formatRupiah(cat.spent)}</span></div>
+                                    <div className="flex justify-between items-baseline"><span className="text-[9px] font-bold opacity-40 uppercase">{t.remaining}</span><span className={`text-[11px] font-black ${cat.remaining < 0 ? 'text-red-500' : 'text-green-500'}`}>{cat.remaining < 0 ? "-" : ""}Rp {formatRupiah(cat.remaining)}</span></div>
                                 </div>
-                            )
-                        })}
+                                <div className="w-full bg-slate-100 dark:bg-slate-700 h-2.5 rounded-full overflow-hidden mb-3"><div className={`h-full transition-all duration-1000 ${cat.remaining < 0 ? 'bg-red-500' : 'bg-sky-500'}`} style={{width: `${Math.min(100, (cat.spent/cat.limit)*100)}%`}}></div></div>
+                            </div>
+                        ))}
                     </div>
                 </div>
-                )}
 
-                {/* HISTORY SECTION */}
                 <div className="space-y-4">
                     <div className="flex justify-between items-center px-2">
                         <h3 className="font-black text-xs opacity-50 uppercase italic tracking-widest">{t.activity}</h3>
-                        {allTransactions.length > 3 && (
-                            <button onClick={() => {setShowAllHistory(!showAllHistory); resetTimer();}} className="text-[10px] font-black text-sky-500 uppercase flex items-center gap-1">
-                                {showAllHistory ? t.showLess : t.seeAll} {showAllHistory ? <ChevronUp size={14}/> : <ChevronDown size={14}/>}
-                            </button>
-                        )}
+                        <button onClick={() => setShowAllHistory(!showAllHistory)} className="text-[10px] font-black text-sky-500 uppercase flex items-center gap-1">{showAllHistory ? t.showLess : t.seeAll} {showAllHistory ? <ChevronUp size={14}/> : <ChevronDown size={14}/>}</button>
                     </div>
                     <div className="space-y-3">
                         {displayedTransactions.map(tr => (
                             <div key={tr.id} className={`p-4 rounded-[2rem] flex justify-between items-center border transition-all ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-50 shadow-sm'}`}>
-                                <div className="flex items-center gap-4 min-w-0 flex-1">
-                                    <div className={`w-10 h-10 flex-shrink-0 rounded-2xl flex items-center justify-center ${tr.type === 'income' ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'}`}>
-                                        {tr.type === 'income' ? <ArrowUpCircle size={20}/> : <ArrowDownCircle size={20}/>}
-                                    </div>
-                                    <div className="min-w-0">
-                                        <p className="font-black text-sm text-sky-500 uppercase truncate">{tr.category}</p>
-                                        <p className="text-[8px] text-slate-400 font-bold uppercase truncate">{wallets.find(w => w.id === tr.walletId)?.name || 'Wallet'}</p>
-                                    </div>
-                                </div>
-                                <div className="flex items-center gap-3">
-                                    <p className={`font-black text-sm whitespace-nowrap ${tr.type === 'income' ? 'text-green-500' : 'text-red-500'}`}>
-                                        {showBalance ? `${tr.type === 'income' ? '+' : '-'}Rp ${formatRupiah(tr.amount)}` : "Rp ••••••"}
-                                    </p>
-                                    <button onClick={async () => {if(window.confirm("Hapus?")) await deleteDoc(doc(db, "transactions", tr.id))}} className="text-slate-300 hover:text-red-500 transition-all">
-                                        <Trash2 size={16}/>
-                                    </button>
-                                </div>
+                                <div className="flex items-center gap-4 min-w-0 flex-1"><div className={`w-10 h-10 flex-shrink-0 rounded-2xl flex items-center justify-center ${tr.type === 'income' ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'}`}>{tr.type === 'income' ? <ArrowUpCircle size={20}/> : <ArrowDownCircle size={20}/>}</div><div className="min-w-0"><p className="font-black text-sm text-sky-500 uppercase truncate">{tr.category}</p><p className="text-[8px] text-slate-400 font-bold uppercase truncate">{wallets.find(w => w.id === tr.walletId)?.name || 'Wallet'}</p></div></div>
+                                <div className="flex items-center gap-3"><p className={`font-black text-sm whitespace-nowrap ${tr.type === 'income' ? 'text-green-500' : 'text-red-500'}`}>{showBalance ? `${tr.type === 'income' ? '+' : '-'}Rp ${formatRupiah(tr.amount)}` : "Rp ••••••"}</p><button onClick={async () => {if(window.confirm("Hapus?")) await deleteDoc(doc(db, "transactions", tr.id))}} className="text-slate-300 hover:text-red-500 transition-all"><Trash2 size={16}/></button></div>
                             </div>
                         ))}
                     </div>
@@ -427,58 +423,168 @@ function App() {
             </div>
         )}
 
-        {/* WALLET TAB */}
         {activeTab === "wallet" && (
-            <div className="space-y-6 animate-in slide-in-from-right duration-300"><div className="flex justify-between items-center px-2"><h2 className="font-black italic text-xl uppercase tracking-tighter">My Wallets</h2><button onClick={() => {setShowAddWallet(true); resetTimer();}} className="bg-sky-500 text-white p-2 rounded-xl shadow-lg shadow-sky-500/20"><PlusCircle size={20}/></button></div>
-                {wallets.map(w => (
-                    <div key={w.id} className={`p-6 rounded-[2.5rem] border ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white shadow-sm'}`}>
-                        <div className="flex items-center justify-between"><div className="flex items-center gap-4"><div className="w-12 h-12 bg-sky-500/10 text-sky-500 rounded-2xl flex items-center justify-center"><WalletIcon size={24}/></div>
-                                <div><p className="font-black text-xs uppercase opacity-50">{w.name}</p><p className="font-black text-lg text-sky-500 truncate max-w-[150px]">Rp {formatRupiah(allTransactions.filter(t => t.walletId === w.id).reduce((a, b) => a + (b.type === 'income' ? Number(b.amount) : -Number(b.amount)), 0))}</p></div>
-                            </div><button onClick={async () => {if(window.confirm("Hapus?")) await deleteDoc(doc(db,"wallets",w.id))}} className="text-red-500/20 hover:text-red-500 transition-colors"><Trash2 size={18}/></button>
+            <div className="space-y-6 animate-in slide-in-from-right duration-300">
+                <div className="flex justify-between items-center px-2"><h2 className="font-black italic text-xl uppercase tracking-tighter">{t.myWallets}</h2><button onClick={() => setShowAddWallet(true)} className="bg-sky-500 text-white p-2 rounded-xl shadow-lg active:scale-90 transition-all"><Plus size={22}/></button></div>
+                {walletData.map(w => (
+                    <div key={w.id} className={`p-6 rounded-[2.5rem] border flex items-center justify-between transition-all ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white shadow-sm border-slate-50'}`}>
+                        <div className="flex items-center gap-4">
+                            <div className={`w-14 h-14 rounded-2xl flex items-center justify-center ${darkMode ? 'bg-slate-700 text-sky-400' : 'bg-sky-50 text-sky-500'}`}>{w.type === 'bank' ? <Landmark size={22}/> : w.type === 'ewallet' ? <CreditCard size={22}/> : <Coins size={22}/>}</div>
+                            <div className="min-w-0"><div className="flex items-center gap-2"><p className="font-black text-[10px] uppercase opacity-40 tracking-widest">{w.name}</p><span className="text-[8px] bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded-full font-bold opacity-60 uppercase">{w.type}</span></div><p className="font-black text-lg text-sky-500 truncate max-w-[180px]">Rp {formatRupiah(w.balance)}</p></div>
                         </div>
+                        <button onClick={async () => {if(window.confirm("Hapus dompet?")) await deleteDoc(doc(db,"wallets",w.id))}} className="p-2 text-red-500/10 hover:text-red-500 transition-colors"><Trash2 size={20}/></button>
                     </div>
                 ))}
             </div>
         )}
-        
-        {/* CATEGORY TAB */}
+
+        {/* --- IMPROVED CATEGORY TAB --- */}
         {activeTab === "category" && (
-            <div className="space-y-6 animate-in slide-in-from-right duration-300"><div className="flex justify-between items-center px-2"><h2 className="font-black italic text-xl uppercase tracking-tighter">Category & Budget</h2></div>
-                <div className={`p-8 rounded-[2.5rem] border ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white shadow-sm'}`}>
-                    <div className="space-y-3 mb-6"><input value={newCatName} onChange={(e) => {setNewCatName(e.target.value); resetTimer();}} className={`w-full p-4 rounded-2xl outline-none text-xs font-black border ${darkMode ? 'bg-slate-700 border-slate-600' : 'bg-slate-50 border-slate-100'}`} placeholder="Category Name..." />
-                        <div className="flex gap-2"><input value={newCatLimit} onChange={(e) => {setNewCatLimit(e.target.value); resetTimer();}} type="number" className={`flex-1 p-4 rounded-2xl outline-none text-xs font-black border ${darkMode ? 'bg-slate-700 border-slate-600' : 'bg-slate-50 border-slate-100'}`} placeholder="Limit Budget..." />
-                            <button onClick={async () => {if(!newCatName) return; await addDoc(collection(db, "categories"), { name: newCatName, limit: Number(newCatLimit) || 0, userId: user.uid, createdAt: new Date() }); setNewCatName(""); setNewCatLimit(""); resetTimer();}} className="bg-orange-500 text-white px-6 rounded-2xl active:scale-95 shadow-lg"><PlusCircle size={20}/></button>
+            <div className="space-y-6 animate-in slide-in-from-right duration-300">
+                <div className="flex justify-between items-center px-2">
+                    <h2 className="font-black italic text-xl uppercase tracking-tighter">{t.catTitle}</h2>
+                </div>
+                
+                {/* Add New Category Section */}
+                <div className={`p-6 rounded-[2.5rem] border shadow-xl ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-50'}`}>
+                    <div className="space-y-4">
+                        <input 
+                            value={newCatName} 
+                            onChange={(e) => setNewCatName(e.target.value)} 
+                            className={`w-full p-4 rounded-2xl outline-none text-xs font-black border dark:bg-slate-700 dark:border-slate-600 transition-all focus:ring-2 focus:ring-sky-500 ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`} 
+                            placeholder="Nama Kategori Baru" 
+                        />
+                        <div className="flex gap-2">
+                            <input 
+                                value={newCatLimit} 
+                                onChange={(e) => setNewCatLimit(e.target.value)} 
+                                type="number" 
+                                className={`flex-1 p-4 rounded-2xl outline-none text-xs font-black border dark:bg-slate-700 dark:border-slate-600 transition-all focus:ring-2 focus:ring-sky-500 ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`} 
+                                placeholder="Limit Budget Rp" 
+                            />
+                            <button 
+                                onClick={async () => {
+                                    if(!newCatName) return; 
+                                    await addDoc(collection(db, "categories"), { 
+                                        name: newCatName, 
+                                        limit: Number(newCatLimit) || 0, 
+                                        userId: user.uid, 
+                                        createdAt: new Date() 
+                                    }); 
+                                    setNewCatName(""); 
+                                    setNewCatLimit("");
+                                }} 
+                                className="bg-sky-500 text-white px-6 rounded-2xl active:scale-90 shadow-lg transition-all"
+                            >
+                                <PlusCircle size={22}/>
+                            </button>
                         </div>
                     </div>
-                    <div className="space-y-3">{categories.map(c => (
-                            <div key={c.id} className={`p-5 rounded-[2rem] border ${darkMode ? 'bg-slate-700 border-slate-700' : 'bg-slate-50 border-slate-100'}`}><div className="flex justify-between items-center mb-1"><span className="text-[10px] font-black uppercase opacity-70 tracking-widest">{c.name}</span><button onClick={async () => {await deleteDoc(doc(db, "categories", c.id)); resetTimer();}} className="text-red-500/30 hover:text-red-500"><Trash2 size={16}/></button></div>
-                                {Number(c.limit) > 0 && <div className="mt-3"><div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden"><div className="h-full bg-sky-500 transition-all duration-700" style={{width: `${Math.min(((categoryStats.find(cs => cs.id === c.id)?.spent || 0)/c.limit)*100, 100)}%`}}></div></div></div>}
+                </div>
+
+                {/* Categories List */}
+                <div className="space-y-4">
+                    {categoryStats.map(c => {
+                        const isOver = c.limit > 0 && c.spent >= c.limit;
+                        const percentage = c.limit > 0 ? Math.round((c.spent/c.limit)*100) : 0;
+                        
+                        return (
+                            <div key={c.id} className={`p-5 rounded-[2.5rem] border shadow-sm transition-all ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-50'}`}>
+                                <div className="flex justify-between items-start mb-4">
+                                    <div className="flex items-center gap-3">
+                                        <div className={`w-10 h-10 rounded-2xl flex items-center justify-center ${darkMode ? 'bg-slate-700' : 'bg-sky-50'} text-sky-500`}>
+                                            <Layers size={18}/>
+                                        </div>
+                                        <div>
+                                            <span className="text-[10px] font-black uppercase tracking-widest block opacity-50">Category</span>
+                                            <span className="text-sm font-black uppercase text-sky-500">{c.name}</span>
+                                        </div>
+                                    </div>
+                                    <div className="flex gap-1">
+                                        <button onClick={() => { setEditingCategoryId(c.id); setTempLimit(c.limit); }} className="p-2 text-slate-400 hover:text-sky-500 transition-colors"><Edit3 size={16}/></button>
+                                        <button onClick={async () => { if(window.confirm("Hapus kategori?")) await deleteDoc(doc(db, "categories", c.id)) }} className="p-2 text-slate-400 hover:text-red-500 transition-colors"><Trash2 size={16}/></button>
+                                    </div>
+                                </div>
+
+                                {editingCategoryId === c.id ? (
+                                    <div className="flex gap-2 mt-2 animate-in slide-in-from-top">
+                                        <input 
+                                            type="number" 
+                                            value={tempLimit} 
+                                            onChange={(e) => setTempLimit(e.target.value)} 
+                                            className="flex-1 p-2 rounded-xl text-xs font-black border dark:bg-slate-700 outline-none focus:ring-1 focus:ring-sky-500" 
+                                            placeholder="Update Limit..."
+                                        />
+                                        <button onClick={() => handleUpdateLimit(c.id)} className="bg-green-500 text-white p-2 rounded-xl active:scale-90"><Check size={16}/></button>
+                                        <button onClick={() => setEditingCategoryId(null)} className="bg-slate-200 text-slate-500 p-2 rounded-xl active:scale-90"><X size={16}/></button>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-3">
+                                        <div className="flex justify-between items-end">
+                                            <div>
+                                                <p className="text-[8px] font-black opacity-40 uppercase">Spent / Limit</p>
+                                                <p className="text-[10px] font-black">
+                                                    Rp {formatRupiah(c.spent)} <span className="opacity-30">/</span> <span className="text-sky-500">Rp {formatRupiah(c.limit)}</span>
+                                                </p>
+                                            </div>
+                                            <div className="text-right">
+                                                <p className={`text-[12px] font-black ${isOver ? 'text-red-500 animate-pulse' : 'text-sky-500'}`}>
+                                                    {percentage}%
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <div className="w-full bg-slate-100 dark:bg-slate-700 h-3 rounded-full overflow-hidden shadow-inner">
+                                            <div 
+                                                className={`h-full transition-all duration-1000 ${isOver ? 'bg-red-500' : 'bg-sky-500'}`} 
+                                                style={{ width: `${Math.min(100, percentage)}%` }}
+                                            ></div>
+                                        </div>
+                                        {isOver && (
+                                            <div className="flex items-center gap-1 text-red-500">
+                                                <AlertTriangle size={12}/>
+                                                <span className="text-[8px] font-black uppercase tracking-tighter">Budget Exceeded by Rp {formatRupiah(Math.abs(c.remaining))}</span>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
                             </div>
-                        ))}
-                    </div>
+                        );
+                    })}
                 </div>
             </div>
         )}
 
-        {/* PROFILE TAB */}
         {activeTab === "profile" && (
             <div className="space-y-6 animate-in slide-in-from-right duration-500">
-                <div className={`p-8 rounded-[2.5rem] border shadow-xl text-center relative overflow-hidden transition-all ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-50'}`}>
+                <div className={`p-8 rounded-[2.5rem] border shadow-xl relative overflow-hidden transition-all ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-50'}`}>
                     <div className="absolute top-0 right-0 w-32 h-32 bg-sky-500/10 rounded-full -mr-16 -mt-16 blur-3xl"></div>
-                    <div className="w-24 h-24 bg-gradient-to-tr from-sky-500 to-indigo-500 mx-auto mb-4 rounded-[2rem] flex items-center justify-center text-white border-4 border-white dark:border-slate-700 shadow-lg"><User size={40}/></div>
-                    <h2 className="font-black text-xl mb-1 tracking-tighter">{user.displayName || "User Finansial"}</h2>
-                    <p className="text-slate-400 text-xs font-bold mb-6 tracking-widest uppercase truncate px-4">{user.email}</p>
+                    <div className="flex flex-col items-center text-center mb-6">
+                        <div className="w-24 h-24 bg-gradient-to-tr from-sky-500 to-indigo-500 mb-4 rounded-[2rem] flex items-center justify-center text-white border-4 border-white dark:border-slate-700 shadow-lg relative">
+                            <User size={40}/>
+                            <div className={`absolute -bottom-2 -right-2 w-10 h-10 rounded-full border-4 border-white dark:border-slate-800 flex items-center justify-center text-[10px] font-black ${healthScore > 50 ? 'bg-green-500' : 'bg-orange-500'} text-white`}>{healthScore}%</div>
+                        </div>
+                        <h2 className="font-black text-xl mb-1 tracking-tighter">{user.displayName || "User Finansial"}</h2>
+                        <p className="text-slate-400 text-[10px] font-bold tracking-[0.2em] uppercase truncate max-w-full px-4">{user.email}</p>
+                    </div>
                     <div className="grid grid-cols-2 gap-4 border-t pt-6 border-slate-100 dark:border-slate-700">
-                        <div className="text-left overflow-hidden"><p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Total Saldo</p><p className="font-black text-sm text-sky-500 italic truncate">Rp {formatRupiah(stats.balance)}</p></div>
+                        <div className="text-left overflow-hidden"><p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">{t.healthScore}</p><p className={`font-black text-sm italic ${healthScore > 70 ? 'text-green-500' : 'text-orange-500'}`}>{healthScore > 70 ? 'Excellent' : 'Need Focus'}</p></div>
                         <div className="text-right overflow-hidden"><p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Transaksi</p><p className="font-black text-sm text-sky-500 italic">{allTransactions.length} Tx</p></div>
                     </div>
                 </div>
+
                 <div className="space-y-4">
-                    <div className="space-y-2"><p className="px-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">{t.account}</p>
+                    <div className="space-y-2">
+                        <p className="px-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">{t.account}</p>
                         <div className={`rounded-[2.5rem] p-4 space-y-1 shadow-sm border ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-50'}`}>
                             <button className="w-full flex items-center justify-between p-3 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-2xl transition-all"><div className="flex items-center gap-4"><div className="w-10 h-10 bg-sky-100 dark:bg-sky-500/20 text-sky-500 rounded-xl flex items-center justify-center"><User size={18}/></div><span className="text-xs font-black uppercase tracking-tight">Edit Profil</span></div><ChevronRight size={16} className="text-slate-300"/></button>
-                            <button onClick={() => {setActiveTab("wallet"); resetTimer();}} className="w-full flex items-center justify-between p-3 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-2xl transition-all"><div className="flex items-center gap-4"><div className="w-10 h-10 bg-green-100 dark:bg-green-500/20 text-green-500 rounded-xl flex items-center justify-center"><CreditCard size={18}/></div><span className="text-xs font-black uppercase tracking-tight">Atur Wallet</span></div><ChevronRight size={16} className="text-slate-300"/></button>
-                            <button onClick={() => {setShowExportModal(true); resetTimer();}} className="w-full flex items-center justify-between p-3 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-2xl transition-all"><div className="flex items-center gap-4"><div className="w-10 h-10 bg-orange-100 dark:bg-orange-500/20 text-orange-500 rounded-xl flex items-center justify-center"><Database size={18}/></div><span className="text-xs font-black uppercase tracking-tight">{t.exportData}</span></div><ChevronRight size={16} className="text-slate-300"/></button>
+                            <button onClick={() => setShowExportModal(true)} className="w-full flex items-center justify-between p-3 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-2xl transition-all"><div className="flex items-center gap-4"><div className="w-10 h-10 bg-orange-100 dark:bg-orange-500/20 text-orange-500 rounded-xl flex items-center justify-center"><Database size={18}/></div><span className="text-xs font-black uppercase tracking-tight">{t.exportData}</span></div><ChevronRight size={16} className="text-slate-300"/></button>
+                        </div>
+                    </div>
+                    <div className="space-y-2">
+                        <p className="px-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">{t.preferences}</p>
+                        <div className={`rounded-[2.5rem] p-4 space-y-1 shadow-sm border ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-50'}`}>
+                            <div className="w-full flex items-center justify-between p-3"><div className="flex items-center gap-4"><div className="w-10 h-10 bg-indigo-100 dark:bg-indigo-500/20 text-indigo-500 rounded-xl flex items-center justify-center"><Languages size={18}/></div><span className="text-xs font-black uppercase tracking-tight">Bahasa</span></div><button onClick={() => setLang(lang === 'id' ? 'en' : 'id')} className="text-[10px] font-black text-sky-500 uppercase px-4 py-2 bg-sky-500/10 rounded-xl">{lang === 'id' ? 'Indonesia' : 'English'}</button></div>
+                            <div className="w-full flex items-center justify-between p-3"><div className="flex items-center gap-4"><div className="w-10 h-10 bg-yellow-100 dark:bg-yellow-500/20 text-yellow-600 rounded-xl flex items-center justify-center">{darkMode ? <Moon size={18}/> : <Sun size={18}/>}</div><span className="text-xs font-black uppercase tracking-tight">Tema Gelap</span></div><button onClick={() => setDarkMode(!darkMode)} className={`w-12 h-6 rounded-full relative transition-all ${darkMode ? 'bg-sky-500' : 'bg-slate-200'}`}><div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${darkMode ? 'left-7' : 'left-1'}`}></div></button></div>
                         </div>
                     </div>
                     <button onClick={() => signOut(auth)} className="w-full p-6 bg-red-50 dark:bg-red-500/10 text-red-500 rounded-[2rem] font-black uppercase text-xs tracking-widest flex items-center justify-center gap-3 active:scale-95 transition-all"><LogOut size={18}/> Logout</button>
@@ -487,78 +593,28 @@ function App() {
         )}
       </div>
 
-      {/* BOTTOM NAV */}
+      {/* NAVIGATION */}
       <div className={`fixed bottom-0 left-0 right-0 px-2 py-4 z-50 rounded-t-[3rem] shadow-2xl border-t ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-100'}`}>
         <div className="grid grid-cols-5 items-center w-full text-center">
-          <button onClick={() => {setActiveTab('home'); resetTimer();}} className={`flex flex-col items-center transition-all ${activeTab === 'home' ? 'text-sky-500 scale-110' : 'opacity-30'}`}><Home size={22}/> <span className="text-[8px] font-black uppercase">{t.home}</span></button>
-          <button onClick={() => {setActiveTab('category'); resetTimer();}} className={`flex flex-col items-center transition-all ${activeTab === 'category' ? 'text-orange-500 scale-110' : 'opacity-30'}`}><Tag size={22}/> <span className="text-[8px] font-black uppercase">Tag</span></button>
-          <div className="flex justify-center -mt-12"><button onClick={() => {setShowAddTransaction(true); resetTimer();}} className="w-14 h-14 bg-sky-500 rounded-full flex items-center justify-center text-white border-4 border-white shadow-xl active:scale-90 transition-all"><PlusCircle size={28}/></button></div>
-          <button onClick={() => {setActiveTab('wallet'); resetTimer();}} className={`flex flex-col items-center transition-all ${activeTab === 'wallet' ? 'text-sky-500 scale-110' : 'opacity-30'}`}><WalletIcon size={22}/> <span className="text-[8px] font-black uppercase">Wallet</span></button>
-          <button onClick={() => {setActiveTab('profile'); resetTimer();}} className={`flex flex-col items-center transition-all ${activeTab === 'profile' ? 'text-sky-500 scale-110' : 'opacity-30'}`}><User size={22}/> <span className="text-[8px] font-black uppercase">User</span></button>
+          <button onClick={() => setActiveTab('home')} className={`flex flex-col items-center transition-all ${activeTab === 'home' ? 'text-sky-500 scale-110' : 'opacity-30'}`}><Home size={22}/> <span className="text-[8px] font-black uppercase">{t.home}</span></button>
+          <button onClick={() => setActiveTab('category')} className={`flex flex-col items-center transition-all ${activeTab === 'category' ? 'text-orange-500 scale-110' : 'opacity-30'}`}><Tag size={22}/> <span className="text-[8px] font-black uppercase">Tag</span></button>
+          <div className="flex justify-center -mt-12"><button onClick={() => setShowAddTransaction(true)} className="w-14 h-14 bg-sky-500 rounded-full flex items-center justify-center text-white border-4 border-white shadow-xl active:scale-90 transition-all"><PlusCircle size={28}/></button></div>
+          <button onClick={() => setActiveTab('wallet')} className={`flex flex-col items-center transition-all ${activeTab === 'wallet' ? 'text-sky-500 scale-110' : 'opacity-30'}`}><WalletIcon size={22}/> <span className="text-[8px] font-black uppercase">Wallet</span></button>
+          <button onClick={() => setActiveTab('profile')} className={`flex flex-col items-center transition-all ${activeTab === 'profile' ? 'text-sky-500 scale-110' : 'opacity-30'}`}><User size={22}/> <span className="text-[8px] font-black uppercase">User</span></button>
         </div>
       </div>
 
-      {/* MODAL TRANSFER */}
-      {showTransferModal && (
-        <div className="fixed inset-0 z-[110] bg-black/60 backdrop-blur-sm flex items-center justify-center p-6 animate-in zoom-in duration-300">
-          <div className={`w-full max-w-sm p-8 rounded-[3.5rem] shadow-2xl ${darkMode ? 'bg-slate-800' : 'bg-white'}`}>
-             <div className="flex justify-between items-center mb-6 italic font-black text-teal-500 text-lg tracking-tighter"><h2>TRANSFER DANA</h2><button onClick={() => setShowTransferModal(false)}><X/></button></div>
-             <div className="space-y-4">
-                <input type="text" value={transferForm.amount ? formatRupiah(transferForm.amount) : ""} onChange={(e) => {
-                    const raw = e.target.value.replace(/\D/g, '');
-                    setTransferForm({...transferForm, amount: raw});
-                    resetTimer();
-                }} className={`w-full p-4 rounded-2xl outline-none text-xs font-black border ${darkMode ? 'bg-slate-700 border-slate-600' : 'bg-slate-50 border-slate-100'}`} placeholder="Nominal Rp" />
-                <select value={transferForm.fromWalletId} onChange={(e) => {setTransferForm({...transferForm, fromWalletId: e.target.value}); resetTimer();}} className={`w-full p-4 rounded-2xl outline-none text-xs font-black border ${darkMode ? 'bg-slate-700 border-slate-600' : 'bg-slate-50 border-slate-100'}`}>
-                    <option value="">Dari Dompet</option>
-                    {wallets.map(w => <option key={w.id} value={w.id}>{w.name.toUpperCase()}</option>)}
-                </select>
-                <div className="flex justify-center py-1 opacity-40"><ArrowDownCircle /></div>
-                <div className="space-y-1"><p className="text-[10px] font-black opacity-30 ml-2 uppercase">Tujuan Dompet</p>
-                    <select value={transferForm.toWalletId} onChange={(e) => {setTransferForm({...transferForm, toWalletId: e.target.value}); resetTimer();}} className={`w-full p-4 rounded-2xl outline-none text-xs font-black border ${darkMode ? 'bg-slate-700 border-slate-600' : 'bg-slate-50 border-slate-100'}`}>
-                        <option value="">Pilih Dompet Tujuan</option>
-                        {wallets.map(w => <option key={w.id} value={w.id}>{w.name.toUpperCase()}</option>)}
-                    </select>
-                </div>
-                <button onClick={handleTransfer} className="w-full bg-teal-500 text-white py-5 rounded-[2rem] font-black uppercase tracking-[0.2em] text-[10px] active:scale-95 flex items-center justify-center gap-2 mt-4"><ArrowRightLeft size={16}/> Konfirmasi Transfer</button>
-             </div>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL SCANNER */}
-      {showScanner && (
-        <div className="fixed inset-0 z-[110] bg-black/80 backdrop-blur-md flex items-center justify-center p-6 animate-in zoom-in duration-300">
-          <div className={`w-full max-w-sm p-10 rounded-[3.5rem] text-center ${darkMode ? 'bg-slate-800' : 'bg-white'}`}>
-            <div className="flex justify-between items-center mb-8 italic font-black text-indigo-500 text-lg tracking-tighter"><h2>{t.scannerTitle}</h2><button onClick={() => setShowScanner(false)}><X/></button></div>
-            <div className={`w-full aspect-square rounded-[3rem] border-4 border-dashed mb-8 flex flex-col items-center justify-center gap-4 ${isScanning ? 'border-indigo-500 bg-indigo-500/10' : 'border-slate-200 opacity-50'}`}>
-                {isScanning ? <><Loader2 size={50} className="text-indigo-500 animate-spin" /><p className="text-xs font-black uppercase tracking-widest animate-pulse">Scanning Bill...</p></> : <><Camera size={50} className="text-slate-300" /><p className="text-[10px] font-bold px-6 text-slate-400">Pilih foto struk belanja lo bro</p></>}
-            </div>
-            <label className={`w-full flex items-center justify-center gap-3 py-5 rounded-[2rem] font-black uppercase text-[10px] tracking-widest transition-all cursor-pointer ${isScanning ? 'bg-slate-300 pointer-events-none' : 'bg-indigo-500 text-white shadow-xl shadow-indigo-500/20'}`}><Sparkles size={16}/> {isScanning ? 'Processing...' : 'Select Photo'}<input type="file" accept="image/*" className="hidden" onChange={(e) => {handleScanFile(e); resetTimer();}} disabled={isScanning} /></label>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL REPORT (FIXED & BACK) */}
+      {/* MODAL REPORT */}
       {showExportModal && (
         <div className="fixed inset-0 z-[120] bg-black/60 backdrop-blur-sm flex items-center justify-center p-6 animate-in zoom-in duration-300">
-          <div className={`w-full max-w-sm p-10 rounded-[3.5rem] shadow-2xl ${darkMode ? 'bg-slate-800' : 'bg-white'}`}>
-            <div className="flex justify-between items-center mb-8 italic font-black text-orange-500 text-lg tracking-tighter">
-                <h2>{t.report.toUpperCase()}</h2>
-                <button onClick={() => setShowExportModal(false)}><X/></button>
-            </div>
+          <div className={`w-full max-w-sm p-10 rounded-[3.5rem] shadow-2xl ${darkMode ? 'bg-slate-800 border border-slate-700' : 'bg-white'}`}>
+            <div className="flex justify-between items-center mb-8 italic font-black text-orange-500 text-lg text-lg tracking-tighter uppercase tracking-tighter"><h2>{t.report}</h2><button onClick={() => setShowExportModal(false)}><X/></button></div>
             <div className="space-y-5">
-                <div className="space-y-1">
-                    <p className="text-[10px] font-black opacity-30 ml-2 uppercase tracking-widest">Mulai</p>
-                    <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className={`w-full p-4 rounded-2xl outline-none text-xs font-black border ${darkMode ? 'bg-slate-700 border-slate-600' : 'bg-slate-50 border-slate-100'}`} />
-                </div>
-                <div className="space-y-1">
-                    <p className="text-[10px] font-black opacity-30 ml-2 uppercase tracking-widest">Sampai</p>
-                    <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className={`w-full p-4 rounded-2xl outline-none text-xs font-black border ${darkMode ? 'bg-slate-700 border-slate-600' : 'bg-slate-50 border-slate-100'}`} />
-                </div>
-                <button onClick={exportPDF} className="w-full bg-orange-500 text-white py-5 rounded-[2rem] font-black uppercase tracking-[0.2em] text-[10px] active:scale-95 flex items-center justify-center gap-2 mt-4 shadow-lg shadow-orange-500/20">
-                    <FileText size={16}/> {t.downloadBtn}
-                </button>
+              <div className="space-y-1"><p className="text-[10px] font-black opacity-30 ml-2 uppercase tracking-widest">Mulai</p><input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className={`w-full p-4 rounded-2xl outline-none text-xs font-black border ${darkMode ? 'bg-slate-700 border-slate-600' : 'bg-slate-50'}`} /></div>
+              <div className="space-y-1"><p className="text-[10px] font-black opacity-30 ml-2 uppercase tracking-widest">Sampai</p><input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className={`w-full p-4 rounded-2xl outline-none text-xs font-black border ${darkMode ? 'bg-slate-700 border-slate-600' : 'bg-slate-50'}`} /></div>
+              <button onClick={exportPDF} className="w-full bg-orange-500 hover:bg-orange-600 text-white py-5 rounded-[2rem] font-black uppercase tracking-[0.2em] text-[10px] active:scale-95 flex items-center justify-center gap-2 mt-4 shadow-lg shadow-orange-500/30 transition-all cursor-pointer">
+                <FileText size={16}/> {t.downloadBtn}
+              </button>
             </div>
           </div>
         </div>
@@ -566,9 +622,10 @@ function App() {
 
       {/* MODAL ADD WALLET */}
       {showAddWallet && (
-        <div className="fixed inset-0 z-[110] bg-black/60 flex items-center justify-center p-6 animate-in zoom-in duration-300">
-          <div className={`w-full max-w-sm p-10 rounded-[3.5rem] ${darkMode ? 'bg-slate-800' : 'bg-white'}`}><div className="flex justify-between items-center mb-8"><h2 className="font-black uppercase text-sm italic text-sky-600 tracking-widest">Add Wallet</h2><button onClick={() => setShowAddWallet(false)}><X/></button></div>
-             <input value={newWalletName} onChange={(e) => setNewWalletName(e.target.value)} className={`w-full p-5 rounded-[2rem] outline-none mb-6 text-sm font-black border ${darkMode ? 'bg-slate-700 border-slate-600' : 'bg-slate-100 border-slate-200'}`} placeholder="Wallet name..." /><button onClick={() => {if(newWalletName){addDoc(collection(db, "wallets"), { name: newWalletName, userId: user.uid, createdAt: new Date() }); setNewWalletName(""); setShowAddWallet(false);}}} className="w-full bg-sky-500 text-white py-5 rounded-[2rem] font-black uppercase text-xs">Save Wallet</button>
+        <div className="fixed inset-0 z-[130] bg-black/60 backdrop-blur-sm flex items-center justify-center p-6 animate-in zoom-in duration-300">
+          <div className={`w-full max-w-sm p-10 rounded-[3.5rem] shadow-2xl ${darkMode ? 'bg-slate-800' : 'bg-white'}`}>
+            <div className="flex justify-between items-center mb-8 italic font-black text-sky-500 text-lg tracking-tighter uppercase tracking-tighter"><h2>Add New Wallet</h2><button onClick={() => setShowAddWallet(false)}><X/></button></div>
+            <div className="space-y-5"><input value={newWalletName} onChange={(e) => setNewWalletName(e.target.value)} className="w-full p-5 rounded-[2rem] outline-none text-sm font-black border dark:bg-slate-700 dark:border-slate-600" placeholder="Wallet name" /><div className="space-y-2"><p className="text-[10px] font-black opacity-30 ml-4 uppercase tracking-widest">Wallet Type</p><div className="grid grid-cols-3 gap-2">{['bank', 'ewallet', 'cash'].map(type => (<button key={type} onClick={() => setNewWalletType(type)} className={`py-3 rounded-2xl text-[9px] font-black uppercase transition-all ${newWalletType === type ? 'bg-sky-500 text-white' : 'bg-slate-100 dark:bg-slate-700 opacity-40'}`}>{type}</button>))}</div></div><button onClick={async () => {if(newWalletName){await addDoc(collection(db, "wallets"), { name: newWalletName, type: newWalletType, userId: user.uid, createdAt: new Date() }); setNewWalletName(""); setShowAddWallet(false);}}} className="w-full bg-sky-500 text-white py-5 rounded-[2rem] font-black uppercase text-xs active:scale-95 shadow-xl transition-all mt-4">Save Wallet</button></div>
           </div>
         </div>
       )}
@@ -577,33 +634,69 @@ function App() {
       {showAddTransaction && (
         <div className={`fixed inset-0 z-[100] flex flex-col animate-in slide-in-from-bottom duration-300 ${darkMode ? 'bg-slate-900 text-white' : 'bg-white text-slate-800'}`}>
           <div className="flex items-center justify-between p-6 shrink-0"><button onClick={() => setShowAddTransaction(false)} className={`p-3 rounded-full ${darkMode ? 'bg-slate-800' : 'bg-slate-100'}`}><ChevronLeft size={20}/></button><h2 className="font-black text-lg text-sky-500 uppercase italic tracking-tighter">Add {form.type.toUpperCase()}</h2><div className="w-10"></div></div>
-          <div className="px-6 mb-4 shrink-0"><div className={`${darkMode ? 'bg-slate-800' : 'bg-slate-100'} p-1 rounded-3xl flex`}><button onClick={() => {setForm({...form, type: 'expense'}); resetTimer();}} className={`flex-1 py-3 rounded-2xl text-xs font-black transition-all ${form.type === 'expense' ? 'bg-sky-500 text-white shadow-lg' : 'text-slate-400'}`}>EXPENSE</button><button onClick={() => {setForm({...form, type: 'income'}); resetTimer();}} className={`flex-1 py-3 rounded-2xl text-xs font-black transition-all ${form.type === 'income' ? 'bg-sky-500 text-white shadow-lg' : 'text-slate-400'}`}>INCOME</button></div></div>
+          <div className="px-6 mb-4 shrink-0"><div className={`${darkMode ? 'bg-slate-800' : 'bg-slate-100'} p-1 rounded-3xl flex`}><button onClick={() => setForm({...form, type: 'expense'})} className={`flex-1 py-3 rounded-2xl text-xs font-black transition-all ${form.type === 'expense' ? 'bg-sky-500 text-white shadow-lg' : 'text-slate-400'}`}>EXPENSE</button><button onClick={() => setForm({...form, type: 'income'})} className={`flex-1 py-3 rounded-2xl text-xs font-black transition-all ${form.type === 'income' ? 'bg-sky-500 text-white shadow-lg' : 'text-slate-400'}`}>INCOME</button></div></div>
           <div className="flex flex-col items-center mb-4 shrink-0 px-6"><h1 className="text-4xl font-black tracking-tighter mb-1 text-sky-500 truncate w-full text-center">Rp {form.amount ? formatRupiah(form.amount) : "0"}</h1><p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest italic">Confirm Amount</p></div>
           <div className="flex-1 overflow-y-auto px-6 space-y-6 no-scrollbar pb-10">
-            <div className="space-y-3">
-              <div className="flex justify-between items-center px-2">
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Kategori</p>
-                <button onClick={() => {setShowInlineCatInput(!showInlineCatInput); setShowInlineWalletInput(false); setInlineValue("");}} className="text-sky-500 p-1 hover:bg-sky-500/10 rounded-lg transition-all">{showInlineCatInput ? <X size={16}/> : <Plus size={16}/>}</button>
-              </div>
-              {showInlineCatInput && (<div className="flex gap-2 animate-in slide-in-from-top duration-200"><input autoFocus value={inlineValue} onChange={(e) => setInlineValue(e.target.value)} className={`flex-1 p-3 rounded-xl text-xs font-black border outline-none ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-slate-50 border-slate-200'}`} placeholder="Nama kategori baru..." /><button onClick={() => handleQuickAdd('cat')} className="bg-sky-500 text-white p-3 rounded-xl active:scale-90"><ShieldCheck size={18}/></button></div>)}
-              <div className="flex flex-wrap gap-2">{categories.map(c => (<button key={c.id} onClick={() => {setForm({...form, category: c.name}); resetTimer();}} className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl text-[10px] font-black border transition-all ${form.category === c.name ? 'bg-sky-600 text-white border-sky-600 shadow-md' : 'bg-white border-slate-100 text-slate-400'}`}><Tag size={12}/> {c.name.toUpperCase()}</button>))}</div>
-            </div>
-            <div className="space-y-3">
-              <div className="flex justify-between items-center px-2">
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Wallet</p>
-                <button onClick={() => {setShowInlineWalletInput(!showInlineWalletInput); setShowInlineCatInput(false); setInlineValue("");}} className="text-sky-500 p-1 hover:bg-sky-500/10 rounded-lg transition-all">{showInlineWalletInput ? <X size={16}/> : <Plus size={16}/>}</button>
-              </div>
-              {showInlineWalletInput && (<div className="flex gap-2 animate-in slide-in-from-top duration-200"><input autoFocus value={inlineValue} onChange={(e) => setInlineValue(e.target.value)} className={`flex-1 p-3 rounded-xl text-xs font-black border outline-none ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-slate-50 border-slate-200'}`} placeholder="Nama dompet baru..." /><button onClick={() => handleQuickAdd('wallet')} className="bg-sky-500 text-white p-3 rounded-xl active:scale-90"><ShieldCheck size={18}/></button></div>)}
-              <div className="flex flex-wrap gap-2">{wallets.map(w => (<button key={w.id} onClick={() => {setForm({...form, walletId: w.id}); resetTimer();}} className={`px-4 py-2.5 rounded-2xl text-[10px] font-black border transition-all ${form.walletId === w.id ? 'bg-slate-800 text-white border-slate-800 shadow-md' : 'bg-white border-slate-100 text-slate-400'}`}>{w.name.toUpperCase()}</button>))}</div>
-            </div>
+            <div className="space-y-3"><div className="flex justify-between items-center px-2"><p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Kategori</p><button onClick={() => setShowInlineCatInput(!showInlineCatInput)} className="text-sky-500 p-1 hover:bg-sky-500/10 rounded-lg">{showInlineCatInput ? <X size={16}/> : <Plus size={16}/>}</button></div>{showInlineCatInput && (<div className="flex gap-2 animate-in slide-in-from-top duration-200"><input autoFocus value={inlineValue} onChange={(e) => setInlineValue(e.target.value)} className="flex-1 p-3 rounded-xl text-xs font-black border outline-none dark:bg-slate-800 dark:border-slate-700" placeholder="Kategori baru..." /><button onClick={() => handleQuickAdd('cat')} className="bg-sky-500 text-white p-3 rounded-xl"><ShieldCheck size={18}/></button></div>)}<div className="flex flex-wrap gap-2">{categories.map(c => (<button key={c.id} onClick={() => setForm({...form, category: c.name})} className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl text-[10px] font-black border transition-all ${form.category === c.name ? 'bg-sky-600 text-white border-sky-600 shadow-md' : 'bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-700 text-slate-400'}`}><Tag size={12}/> {c.name.toUpperCase()}</button>))}</div></div>
+            <div className="space-y-3"><div className="flex justify-between items-center px-2"><p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Wallet</p><button onClick={() => setShowInlineWalletInput(!showInlineWalletInput)} className="text-sky-500 p-1 hover:bg-sky-500/10 rounded-lg">{showInlineWalletInput ? <X size={16}/> : <Plus size={16}/>}</button></div>{showInlineWalletInput && (<div className="flex gap-2 animate-in slide-in-from-top duration-200"><input autoFocus value={inlineValue} onChange={(e) => setInlineValue(e.target.value)} className="flex-1 p-3 rounded-xl text-xs font-black border outline-none dark:bg-slate-800 dark:border-slate-700" placeholder="Dompet baru..." /><button onClick={() => handleQuickAdd('wallet')} className="bg-sky-500 text-white p-3 rounded-xl"><ShieldCheck size={18}/></button></div>)}<div className="flex flex-wrap gap-2">{wallets.map(w => (<button key={w.id} onClick={() => setForm({...form, walletId: w.id})} className={`px-4 py-2.5 rounded-2xl text-[10px] font-black border transition-all ${form.walletId === w.id ? 'bg-slate-800 dark:bg-white dark:text-slate-800 text-white border-slate-800 shadow-md' : 'bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-700 text-slate-400'}`}>{w.name.toUpperCase()}</button>))}</div></div>
           </div>
-          <div className={`shrink-0 ${darkMode ? 'bg-slate-800/80 backdrop-blur-md' : 'bg-slate-50'} border-t border-slate-200`}>
-            <div className="grid grid-cols-3 gap-1 p-2">{[1, 2, 3, 4, 5, 6, 7, 8, 9, "00", 0].map(n => (<button key={n} type="button" onClick={() => {handleNumpad(n.toString()); resetTimer();}} className={`py-4 text-xl font-black active:bg-sky-500 active:text-white transition-all rounded-xl`}>{n}</button>))}
-              <button type="button" onClick={() => {handleNumpad("delete"); resetTimer();}} className="py-4 flex items-center justify-center text-red-500 active:bg-red-500 active:text-white rounded-xl transition-all"><Delete size={24}/></button>
-            </div>
-            <div className="px-4 pb-6 pt-2"><button onClick={(e) => {handleSubmit(e); resetTimer();}} className="w-full bg-sky-500 text-white py-5 rounded-[2rem] font-black uppercase text-xs active:scale-95 shadow-xl shadow-sky-500/20 transition-all flex items-center justify-center gap-3"><ShieldCheck size={18}/> {t.save}</button></div>
+          <div className={`shrink-0 ${darkMode ? 'bg-slate-800/80 backdrop-blur-md' : 'bg-slate-50'} border-t border-slate-200`}><div className="grid grid-cols-3 gap-1 p-2">{[1, 2, 3, 4, 5, 6, 7, 8, 9, "00", 0].map(n => (<button key={n} type="button" onClick={() => handleNumpad(n.toString())} className="py-4 text-xl font-black transition-all rounded-xl">{n}</button>))}<button type="button" onClick={() => handleNumpad("delete")} className="py-4 flex items-center justify-center text-red-500 rounded-xl transition-all"><Delete size={24}/></button></div><div className="px-4 pb-6 pt-2"><button onClick={handleSubmit} className="w-full bg-sky-500 text-white py-5 rounded-[2rem] font-black uppercase text-xs shadow-xl flex items-center justify-center gap-3"><ShieldCheck size={18}/> {t.save}</button></div></div>
+        </div>
+      )}
+
+      {/* MODAL TRANSFER */}
+      {showTransferModal && (
+        <div className="fixed inset-0 z-[110] bg-black/60 backdrop-blur-md flex items-center justify-center p-6 animate-in zoom-in duration-300">
+          <div className={`w-full max-w-sm rounded-[3.5rem] shadow-2xl overflow-hidden ${darkMode ? 'bg-slate-800 border border-slate-700' : 'bg-white'}`}>
+             <div className="p-8 pb-0 flex justify-between items-center italic font-black text-teal-500 text-lg uppercase tracking-tighter uppercase tracking-tighter">
+                <h2>Transfer Dana</h2>
+                <button onClick={() => setShowTransferModal(false)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full transition-all"><X size={20}/></button>
+             </div>
+             <div className="p-8 pt-6 space-y-6">
+                <div className="space-y-2">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Nominal Transfer</p>
+                    <div className="relative">
+                        <span className="absolute left-5 top-1/2 -translate-y-1/2 font-black text-sky-500 text-sm italic">Rp</span>
+                        <input type="text" value={transferForm.amount ? formatRupiah(transferForm.amount) : ""} onChange={(e) => {
+                            const raw = e.target.value.replace(/\D/g, '');
+                            setTransferForm({...transferForm, amount: raw});
+                        }} className={`w-full py-5 pl-12 pr-6 rounded-[2rem] outline-none text-sm font-black border transition-all ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-slate-50 border-slate-100'}`} placeholder="0" />
+                    </div>
+                </div>
+                <div className="space-y-3">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4 italic">Dari Dompet Asal</p>
+                    <div className="flex gap-3 overflow-x-auto no-scrollbar pb-1 px-1">
+                        {walletData.map(w => (
+                            <button key={w.id} onClick={() => setTransferForm({...transferForm, fromWalletId: w.id})} className={`flex-shrink-0 p-4 rounded-3xl border text-left transition-all min-w-[130px] ${transferForm.fromWalletId === w.id ? 'bg-sky-500 border-sky-500 shadow-lg shadow-sky-500/20' : 'bg-slate-50 dark:bg-slate-700 border-transparent opacity-60'}`}>
+                                <p className={`text-[8px] font-black uppercase mb-1 ${transferForm.fromWalletId === w.id ? 'text-white/60' : 'text-slate-400'}`}>{w.name}</p>
+                                <p className={`text-[10px] font-black ${transferForm.fromWalletId === w.id ? 'text-white' : 'text-sky-500'}`}>Rp {formatRupiah(w.balance)}</p>
+                            </button>
+                        ))}
+                    </div>
+                </div>
+                <div className="flex justify-center py-0"><div className="w-10 h-10 bg-teal-500/10 text-teal-500 rounded-full flex items-center justify-center animate-bounce shadow-sm"><ArrowDown size={20}/></div></div>
+                <div className="space-y-3">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4 italic">Tujuan Dompet</p>
+                    <div className="flex gap-3 overflow-x-auto no-scrollbar pb-1 px-1">
+                        {walletData.map(w => (
+                            <button key={w.id} onClick={() => setTransferForm({...transferForm, toWalletId: w.id})} disabled={w.id === transferForm.fromWalletId} className={`flex-shrink-0 p-4 rounded-3xl border text-left transition-all min-w-[130px] ${w.id === transferForm.fromWalletId ? 'opacity-20 grayscale cursor-not-allowed' : transferForm.toWalletId === w.id ? 'bg-teal-500 border-teal-500 shadow-lg shadow-teal-500/20' : 'bg-slate-50 dark:bg-slate-700 border-transparent opacity-60'}`}>
+                                <p className={`text-[8px] font-black uppercase mb-1 ${transferForm.toWalletId === w.id ? 'text-white/60' : 'text-slate-400'}`}>{w.name}</p>
+                                <p className={`text-[10px] font-black ${transferForm.toWalletId === w.id ? 'text-white' : 'text-sky-500'}`}>Rp {formatRupiah(w.balance)}</p>
+                            </button>
+                        ))}
+                    </div>
+                </div>
+                <button onClick={handleTransfer} disabled={!transferForm.amount || !transferForm.fromWalletId || !transferForm.toWalletId} className={`w-full py-5 rounded-[2.5rem] font-black uppercase tracking-[0.2em] text-[10px] transition-all flex items-center justify-center gap-3 mt-4 ${(!transferForm.amount || !transferForm.fromWalletId || !transferForm.toWalletId) ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : 'bg-teal-500 text-white shadow-xl shadow-teal-500/30 active:scale-95'}`}>
+                    <ArrowRightLeft size={16}/> Konfirmasi Transfer
+                </button>
+             </div>
           </div>
         </div>
+      )}
+
+      {/* MODAL SCANNER */}
+      {showScanner && (
+        <div className="fixed inset-0 z-[110] bg-black/80 backdrop-blur-md flex items-center justify-center p-6 animate-in zoom-in duration-300"><div className={`w-full max-w-sm p-10 rounded-[3.5rem] text-center ${darkMode ? 'bg-slate-800' : 'bg-white'}`}><div className="flex justify-between items-center mb-8 italic font-black text-indigo-500 text-lg uppercase tracking-tighter uppercase tracking-tighter"><h2>{t.scannerTitle}</h2><button onClick={() => setShowScanner(false)}><X/></button></div><div className={`w-full aspect-square rounded-[3rem] border-4 border-dashed mb-8 flex flex-col items-center justify-center gap-4 ${isScanning ? 'border-indigo-500 bg-indigo-500/10' : 'border-slate-200 opacity-50'}`}>{isScanning ? <><Loader2 size={50} className="text-indigo-500 animate-spin" /><p className="text-xs font-black uppercase tracking-widest animate-pulse">Scanning Bill...</p></> : <><Camera size={50} className="text-slate-300" /><p className="text-[10px] font-bold px-6 text-slate-400">Pilih foto struk belanja lo bro</p></>}</div><label className={`w-full flex items-center justify-center gap-3 py-5 rounded-[2rem] font-black uppercase text-[10px] tracking-widest transition-all cursor-pointer ${isScanning ? 'bg-slate-300 pointer-events-none' : 'bg-indigo-500 text-white shadow-xl shadow-indigo-500/20'}`}><Sparkles size={16}/> {isScanning ? 'Processing...' : 'Select Photo'}<input type="file" accept="image/*" className="hidden" onChange={(e) => handleScanFile(e)} disabled={isScanning} /></label></div></div>
       )}
     </div>
   );
