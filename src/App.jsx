@@ -161,6 +161,21 @@ function App() {
     return () => { unsubWallets(); unsubCats(); unsubAll(); };
   }, [user]);
 
+  const handleUpdatePhoto = async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  // Untuk demo/sederhana, kita pakai URL lokal dulu atau lo bisa upload ke layanan hosing gambar
+  // Di sini gue contohin cara update display name/photo di Firebase Auth
+  const reader = new FileReader();
+  reader.onloadend = async () => {
+    // Note: Di production, sebaiknya upload file ke Firebase Storage lalu ambil URL-nya
+    // Untuk sekarang kita simpan feedback suksesnya dulu
+    showNotice("Fitur upload ke Storage butuh config tambahan, tapi UI sudah siap!", "success");
+  };
+  reader.readAsDataURL(file);
+};
+
   // CORE LOGIC
   const stats = useMemo(() => {
     const inc = allTransactions.filter(tr => tr.type === 'income').reduce((a, b) => a + (Number(b.amount) || 0), 0);
@@ -333,6 +348,8 @@ function App() {
     setInlineValue("");
   };
 
+  
+
   // Improved Function for Category Tab
   const handleUpdateLimit = async (id) => {
     if (tempLimit === "") return setEditingCategoryId(null);
@@ -423,20 +440,115 @@ function App() {
             </div>
         )}
 
-        {activeTab === "wallet" && (
-            <div className="space-y-6 animate-in slide-in-from-right duration-300">
-                <div className="flex justify-between items-center px-2"><h2 className="font-black italic text-xl uppercase tracking-tighter">{t.myWallets}</h2><button onClick={() => setShowAddWallet(true)} className="bg-sky-500 text-white p-2 rounded-xl shadow-lg active:scale-90 transition-all"><Plus size={22}/></button></div>
-                {walletData.map(w => (
-                    <div key={w.id} className={`p-6 rounded-[2.5rem] border flex items-center justify-between transition-all ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white shadow-sm border-slate-50'}`}>
-                        <div className="flex items-center gap-4">
-                            <div className={`w-14 h-14 rounded-2xl flex items-center justify-center ${darkMode ? 'bg-slate-700 text-sky-400' : 'bg-sky-50 text-sky-500'}`}>{w.type === 'bank' ? <Landmark size={22}/> : w.type === 'ewallet' ? <CreditCard size={22}/> : <Coins size={22}/>}</div>
-                            <div className="min-w-0"><div className="flex items-center gap-2"><p className="font-black text-[10px] uppercase opacity-40 tracking-widest">{w.name}</p><span className="text-[8px] bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded-full font-bold opacity-60 uppercase">{w.type}</span></div><p className="font-black text-lg text-sky-500 truncate max-w-[180px]">Rp {formatRupiah(w.balance)}</p></div>
+        {/* --- IMPROVED WALLET TAB --- */}
+{/* --- FIXED WALLET TAB (LIGHT MODE OPTIMIZED) --- */}
+{/* --- FIXED WALLET TAB (ULTRA CONTRAST LIGHT MODE) --- */}
+{/* --- ULTRA SHARP WALLET TAB (LIGHT MODE OPTIMIZED) --- */}
+{activeTab === "wallet" && (
+    <div className="space-y-6 animate-in slide-in-from-right duration-500 pb-10">
+        {/* Total Assets Summary */}
+        <div className={`px-5 py-6 rounded-[2.5rem] mb-6 border-2 transition-all ${
+    darkMode 
+    ? 'bg-slate-800/40 border-slate-700' 
+    : 'bg-sky-50 border-sky-100 shadow-sm'
+}`}>
+    <p className={`text-[12px] font-black uppercase tracking-[0.25em] mb-2 ${
+        darkMode ? 'text-slate-400' : 'text-sky-900'
+    }`}>
+        Total Aset Keseluruhan
+    </p>
+    <div className="flex items-center gap-3">
+        <h2 className={`text-4xl font-black italic tracking-tighter ${
+            darkMode ? 'text-sky-400' : 'text-sky-700'
+        }`}>
+            Rp {formatRupiah(stats.balance)}
+        </h2>
+        <div className={`w-3 h-3 rounded-full shadow-sm ${
+            stats.balance >= 0 ? 'bg-green-500' : 'bg-red-500'
+        } animate-pulse`}></div>
+    </div>
+</div>
+
+        {/* Wallet Cards Stack */}
+        <div className="space-y-4">
+            <div className="flex justify-between items-center px-2">
+                <h3 className={`font-black text-[10px] uppercase italic tracking-widest ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>
+                    {t.myWallets}
+                </h3>
+                <button 
+                    onClick={() => setShowAddWallet(true)} 
+                    className="bg-sky-500 text-white p-2 rounded-xl shadow-lg active:scale-90 transition-all"
+                >
+                    <Plus size={20}/>
+                </button>
+            </div>
+
+            <div className="grid gap-5">
+                {walletData.map((w) => (
+                    <div 
+                        key={w.id} 
+                        className={`group relative p-7 rounded-[2.5rem] border-2 overflow-hidden transition-all duration-300 shadow-2xl ${
+                            darkMode 
+                            ? 'bg-slate-800 border-slate-700 text-white shadow-slate-950/50' 
+                            : 'bg-white border-slate-100 text-slate-900 shadow-slate-200/80'
+                        }`}
+                    >
+                        {/* Decorative Background Decor */}
+                        <div className={`absolute -top-10 -right-10 w-40 h-40 rounded-full blur-3xl transition-all ${
+                            darkMode ? 'bg-sky-500/10' : 'bg-sky-500/10'
+                        }`}></div>
+                        
+                        <div className="flex justify-between items-start relative z-10">
+                            <div className="flex items-center gap-4">
+                                <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shadow-xl ${
+                                    darkMode ? 'bg-slate-900 text-sky-400' : 'bg-gradient-to-br from-sky-500 to-indigo-600 text-white'
+                                }`}>
+                                    {w.type === 'bank' ? <Landmark size={26}/> : w.type === 'ewallet' ? <CreditCard size={26}/> : <Coins size={26}/>}
+                                </div>
+                                <div>
+                                    <h4 className={`font-black text-base uppercase tracking-tight ${darkMode ? 'text-white' : 'text-slate-900'}`}>
+                                        {w.name}
+                                    </h4>
+                                    <p className={`text-[9px] font-black uppercase tracking-widest flex items-center gap-1.5 mt-1 ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>
+                                        <div className="w-2 h-2 rounded-full bg-green-500"></div> Akun Terverifikasi
+                                    </p>
+                                </div>
+                            </div>
+                            <button 
+                                onClick={async () => { if(window.confirm(`Hapus ${w.name}?`)) await deleteDoc(doc(db,"wallets",w.id)) }}
+                                className={`p-2 transition-colors ${darkMode ? 'text-red-500/30 hover:text-red-500' : 'text-slate-300 hover:text-red-500'}`}
+                            >
+                                <Trash2 size={20}/>
+                            </button>
                         </div>
-                        <button onClick={async () => {if(window.confirm("Hapus dompet?")) await deleteDoc(doc(db,"wallets",w.id))}} className="p-2 text-red-500/10 hover:text-red-500 transition-colors"><Trash2 size={20}/></button>
+
+                        <div className="mt-10 flex justify-between items-end relative z-10">
+                            <div>
+                                <p className={`text-[10px] font-black uppercase mb-1.5 tracking-tighter ${darkMode ? 'text-slate-500' : 'text-slate-500'}`}>
+                                    Saldo Tersedia
+                                </p>
+                                <p className={`text-2xl font-black italic tracking-tighter leading-none ${darkMode ? 'text-sky-400' : 'text-sky-600'}`}>
+                                    Rp {formatRupiah(w.balance)}
+                                </p>
+                            </div>
+                            
+                            <button 
+                                onClick={() => { setShowTransferModal(true); setTransferForm({...transferForm, fromWalletId: w.id}); }}
+                                className={`px-5 py-2.5 rounded-2xl text-[10px] font-black uppercase transition-all active:scale-95 shadow-lg ${
+                                    darkMode 
+                                    ? 'bg-slate-700 text-white' 
+                                    : 'bg-slate-900 text-white hover:bg-black'
+                                }`}
+                            >
+                                Transfer
+                            </button>
+                        </div>
                     </div>
                 ))}
             </div>
-        )}
+        </div>
+    </div>
+)}
 
         {/* --- IMPROVED CATEGORY TAB --- */}
         {activeTab === "category" && (
@@ -554,43 +666,117 @@ function App() {
             </div>
         )}
 
-        {activeTab === "profile" && (
-            <div className="space-y-6 animate-in slide-in-from-right duration-500">
-                <div className={`p-8 rounded-[2.5rem] border shadow-xl relative overflow-hidden transition-all ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-50'}`}>
-                    <div className="absolute top-0 right-0 w-32 h-32 bg-sky-500/10 rounded-full -mr-16 -mt-16 blur-3xl"></div>
-                    <div className="flex flex-col items-center text-center mb-6">
-                        <div className="w-24 h-24 bg-gradient-to-tr from-sky-500 to-indigo-500 mb-4 rounded-[2rem] flex items-center justify-center text-white border-4 border-white dark:border-slate-700 shadow-lg relative">
-                            <User size={40}/>
-                            <div className={`absolute -bottom-2 -right-2 w-10 h-10 rounded-full border-4 border-white dark:border-slate-800 flex items-center justify-center text-[10px] font-black ${healthScore > 50 ? 'bg-green-500' : 'bg-orange-500'} text-white`}>{healthScore}%</div>
-                        </div>
-                        <h2 className="font-black text-xl mb-1 tracking-tighter">{user.displayName || "User Finansial"}</h2>
-                        <p className="text-slate-400 text-[10px] font-bold tracking-[0.2em] uppercase truncate max-w-full px-4">{user.email}</p>
+        {/* --- POWERFULL PROFILE TAB --- */}
+  {activeTab === "profile" && (
+      <div className="space-y-6 animate-in slide-in-from-right duration-500">
+          {/* Profile Identity Card */}
+          <div className={`p-8 rounded-[3rem] border shadow-2xl relative overflow-hidden transition-all ${
+              darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-50'
+          }`}>
+              {/* Background Decor */}
+              <div className="absolute top-0 right-0 w-32 h-32 bg-sky-500/10 rounded-full -mr-16 -mt-16 blur-3xl"></div>
+              
+              <div className="flex flex-col items-center text-center relative z-10">
+                  <div className="w-28 h-28 bg-gradient-to-tr from-sky-500 to-indigo-600 mb-4 rounded-[2.5rem] flex items-center justify-center text-white border-4 border-white dark:border-slate-700 shadow-2xl relative">
+                      <User size={48}/>
+                      <div className={`absolute -bottom-2 -right-2 w-12 h-12 rounded-full border-4 border-white dark:border-slate-800 flex flex-col items-center justify-center text-[10px] font-black text-white shadow-lg ${
+                          healthScore > 60 ? 'bg-green-500' : 'bg-orange-500'
+                      }`}>
+                          <span>{healthScore}%</span>
+                      </div>
+                  </div>
+                  <h2 className="font-black text-2xl mb-1 tracking-tighter italic uppercase">{user.displayName || "User Finansial"}</h2>
+                  <p className="text-slate-400 text-[10px] font-bold tracking-[0.2em] uppercase truncate max-w-full px-4">{user.email}</p>
+              </div>
+
+            {/* Quick Stats Grid */}
+            <div className="grid grid-cols-2 gap-4 mt-8 pt-6 border-t border-slate-100 dark:border-slate-700">
+                <div className="text-left">
+                    <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Financial Health</p>
+                    <p className={`font-black text-sm italic ${healthScore > 60 ? 'text-green-500' : 'text-orange-500'}`}>
+                        {healthScore > 80 ? 'EXCELLENT' : healthScore > 50 ? 'STABLE' : 'WARNING'}
+                    </p>
+                </div>
+                <div className="text-right">
+                    <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Total Activity</p>
+                    <p className="font-black text-sm text-sky-500 italic">{allTransactions.length} Transactions</p>
+                </div>
+            </div>
+        </div>
+
+        {/* Insights Section */}
+        {topSpendingCategory && (
+            <div className={`p-5 rounded-[2.5rem] border flex items-center justify-between ${
+                darkMode ? 'bg-slate-800/50 border-slate-700' : 'bg-orange-50 border-orange-100'
+            }`}>
+                <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-orange-500 text-white rounded-2xl flex items-center justify-center shadow-lg shadow-orange-500/20">
+                        <TrendingDown size={20}/>
                     </div>
-                    <div className="grid grid-cols-2 gap-4 border-t pt-6 border-slate-100 dark:border-slate-700">
-                        <div className="text-left overflow-hidden"><p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">{t.healthScore}</p><p className={`font-black text-sm italic ${healthScore > 70 ? 'text-green-500' : 'text-orange-500'}`}>{healthScore > 70 ? 'Excellent' : 'Need Focus'}</p></div>
-                        <div className="text-right overflow-hidden"><p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Transaksi</p><p className="font-black text-sm text-sky-500 italic">{allTransactions.length} Tx</p></div>
+                    <div>
+                        <p className="text-[8px] font-black text-orange-500 uppercase tracking-widest leading-none mb-1">Top Spending</p>
+                        <p className="font-black text-xs uppercase italic">{topSpendingCategory.name}</p>
                     </div>
                 </div>
-
-                <div className="space-y-4">
-                    <div className="space-y-2">
-                        <p className="px-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">{t.account}</p>
-                        <div className={`rounded-[2.5rem] p-4 space-y-1 shadow-sm border ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-50'}`}>
-                            <button className="w-full flex items-center justify-between p-3 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-2xl transition-all"><div className="flex items-center gap-4"><div className="w-10 h-10 bg-sky-100 dark:bg-sky-500/20 text-sky-500 rounded-xl flex items-center justify-center"><User size={18}/></div><span className="text-xs font-black uppercase tracking-tight">Edit Profil</span></div><ChevronRight size={16} className="text-slate-300"/></button>
-                            <button onClick={() => setShowExportModal(true)} className="w-full flex items-center justify-between p-3 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-2xl transition-all"><div className="flex items-center gap-4"><div className="w-10 h-10 bg-orange-100 dark:bg-orange-500/20 text-orange-500 rounded-xl flex items-center justify-center"><Database size={18}/></div><span className="text-xs font-black uppercase tracking-tight">{t.exportData}</span></div><ChevronRight size={16} className="text-slate-300"/></button>
-                        </div>
-                    </div>
-                    <div className="space-y-2">
-                        <p className="px-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">{t.preferences}</p>
-                        <div className={`rounded-[2.5rem] p-4 space-y-1 shadow-sm border ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-50'}`}>
-                            <div className="w-full flex items-center justify-between p-3"><div className="flex items-center gap-4"><div className="w-10 h-10 bg-indigo-100 dark:bg-indigo-500/20 text-indigo-500 rounded-xl flex items-center justify-center"><Languages size={18}/></div><span className="text-xs font-black uppercase tracking-tight">Bahasa</span></div><button onClick={() => setLang(lang === 'id' ? 'en' : 'id')} className="text-[10px] font-black text-sky-500 uppercase px-4 py-2 bg-sky-500/10 rounded-xl">{lang === 'id' ? 'Indonesia' : 'English'}</button></div>
-                            <div className="w-full flex items-center justify-between p-3"><div className="flex items-center gap-4"><div className="w-10 h-10 bg-yellow-100 dark:bg-yellow-500/20 text-yellow-600 rounded-xl flex items-center justify-center">{darkMode ? <Moon size={18}/> : <Sun size={18}/>}</div><span className="text-xs font-black uppercase tracking-tight">Tema Gelap</span></div><button onClick={() => setDarkMode(!darkMode)} className={`w-12 h-6 rounded-full relative transition-all ${darkMode ? 'bg-sky-500' : 'bg-slate-200'}`}><div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${darkMode ? 'left-7' : 'left-1'}`}></div></button></div>
-                        </div>
-                    </div>
-                    <button onClick={() => signOut(auth)} className="w-full p-6 bg-red-50 dark:bg-red-500/10 text-red-500 rounded-[2rem] font-black uppercase text-xs tracking-widest flex items-center justify-center gap-3 active:scale-95 transition-all"><LogOut size={18}/> Logout</button>
+                <div className="text-right">
+                    <p className="font-black text-sm text-orange-600">Rp {formatRupiah(topSpendingCategory.spent)}</p>
                 </div>
             </div>
         )}
+
+        {/* Menu Options Group */}
+        <div className="space-y-4">
+            <div className="space-y-2">
+                <p className="px-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Preferences</p>
+                <div className={`rounded-[2.5rem] p-4 space-y-1 shadow-sm border ${
+                    darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-50'
+                }`}>
+                    {/* Language Switch */}
+                    <button onClick={() => setLang(lang === 'id' ? 'en' : 'id')} className="w-full flex items-center justify-between p-3 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-2xl transition-all">
+                        <div className="flex items-center gap-4">
+                            <div className="w-10 h-10 bg-sky-100 dark:bg-sky-500/20 text-sky-500 rounded-xl flex items-center justify-center"><Languages size={18}/></div>
+                            <span className="text-xs font-black uppercase tracking-tight">Language / Bahasa</span>
+                        </div>
+                        <span className="text-[10px] font-black text-sky-500 uppercase bg-sky-500/10 px-3 py-1 rounded-lg">{lang === 'id' ? 'ID' : 'EN'}</span>
+                    </button>
+
+                    {/* Theme Switch */}
+                    <button onClick={() => setDarkMode(!darkMode)} className="w-full flex items-center justify-between p-3 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-2xl transition-all">
+                        <div className="flex items-center gap-4">
+                            <div className="w-10 h-10 bg-yellow-100 dark:bg-yellow-500/20 text-yellow-600 rounded-xl flex items-center justify-center">
+                                {darkMode ? <Moon size={18}/> : <Sun size={18}/>}
+                            </div>
+                            <span className="text-xs font-black uppercase tracking-tight">Appearance</span>
+                        </div>
+                        <div className={`w-10 h-5 rounded-full relative transition-all ${darkMode ? 'bg-sky-500' : 'bg-slate-200'}`}>
+                            <div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-all ${darkMode ? 'left-6' : 'left-1'}`}></div>
+                        </div>
+                    </button>
+
+                    {/* Export PDF */}
+                    <button onClick={() => setShowExportModal(true)} className="w-full flex items-center justify-between p-3 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-2xl transition-all">
+                        <div className="flex items-center gap-4">
+                            <div className="w-10 h-10 bg-orange-100 dark:bg-orange-500/20 text-orange-600 rounded-xl flex items-center justify-center"><Database size={18}/></div>
+                            <span className="text-xs font-black uppercase tracking-tight">Export Transaction</span>
+                        </div>
+                        <ChevronRight size={16} className="text-slate-300"/>
+                    </button>
+                </div>
+            </div>
+
+            {/* Logout Button */}
+            <button 
+                onClick={() => signOut(auth)} 
+                className="w-full p-6 bg-red-50 dark:bg-red-500/10 text-red-500 rounded-[2.5rem] font-black uppercase text-xs tracking-widest flex items-center justify-center gap-3 active:scale-95 transition-all shadow-sm border border-red-100 dark:border-red-500/20"
+            >
+                <LogOut size={18}/> Logout Account
+            </button>
+        </div>
+        
+        {/* Footer Credit */}
+        <p className="text-center text-[8px] font-black opacity-20 uppercase tracking-[0.5em] pb-10">FinansialKu v2.0 • Premium Edition</p>
+    </div>
+)}
       </div>
 
       {/* NAVIGATION */}
@@ -620,15 +806,67 @@ function App() {
         </div>
       )}
 
-      {/* MODAL ADD WALLET */}
-      {showAddWallet && (
-        <div className="fixed inset-0 z-[130] bg-black/60 backdrop-blur-sm flex items-center justify-center p-6 animate-in zoom-in duration-300">
-          <div className={`w-full max-w-sm p-10 rounded-[3.5rem] shadow-2xl ${darkMode ? 'bg-slate-800' : 'bg-white'}`}>
-            <div className="flex justify-between items-center mb-8 italic font-black text-sky-500 text-lg tracking-tighter uppercase tracking-tighter"><h2>Add New Wallet</h2><button onClick={() => setShowAddWallet(false)}><X/></button></div>
-            <div className="space-y-5"><input value={newWalletName} onChange={(e) => setNewWalletName(e.target.value)} className="w-full p-5 rounded-[2rem] outline-none text-sm font-black border dark:bg-slate-700 dark:border-slate-600" placeholder="Wallet name" /><div className="space-y-2"><p className="text-[10px] font-black opacity-30 ml-4 uppercase tracking-widest">Wallet Type</p><div className="grid grid-cols-3 gap-2">{['bank', 'ewallet', 'cash'].map(type => (<button key={type} onClick={() => setNewWalletType(type)} className={`py-3 rounded-2xl text-[9px] font-black uppercase transition-all ${newWalletType === type ? 'bg-sky-500 text-white' : 'bg-slate-100 dark:bg-slate-700 opacity-40'}`}>{type}</button>))}</div></div><button onClick={async () => {if(newWalletName){await addDoc(collection(db, "wallets"), { name: newWalletName, type: newWalletType, userId: user.uid, createdAt: new Date() }); setNewWalletName(""); setShowAddWallet(false);}}} className="w-full bg-sky-500 text-white py-5 rounded-[2rem] font-black uppercase text-xs active:scale-95 shadow-xl transition-all mt-4">Save Wallet</button></div>
+ {/* --- MODAL ADD WALLET WITH MODERN DROPDOWN --- */}
+{showAddWallet && (
+  <div className="fixed inset-0 z-[130] bg-black/60 backdrop-blur-sm flex items-center justify-center p-6 animate-in zoom-in duration-300">
+    <div className={`w-full max-w-sm p-10 rounded-[3.5rem] shadow-2xl ${darkMode ? 'bg-slate-800' : 'bg-white'}`}>
+      <div className="flex justify-between items-center mb-8">
+        <h2 className="font-black italic text-sky-500 text-lg uppercase tracking-tighter">New Wallet</h2>
+        <button onClick={() => setShowAddWallet(false)} className="p-2 bg-slate-100 dark:bg-slate-700 rounded-full active:scale-90"><X size={18}/></button>
+      </div>
+
+      <div className="space-y-6">
+        <div className="space-y-2">
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Nama Dompet</p>
+            <input 
+              value={newWalletName} 
+              onChange={(e) => setNewWalletName(e.target.value)} 
+              className={`w-full p-5 rounded-[2rem] outline-none text-sm font-black border transition-all ${darkMode ? 'bg-slate-700 border-slate-600' : 'bg-slate-50 border-slate-100 focus:border-sky-500'}`} 
+              placeholder="Contoh: BCA Personal" 
+            />
+        </div>
+
+        <div className="space-y-2 relative">
+          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Tipe Akun</p>
+          <div className="grid grid-cols-1 gap-2">
+            {/* Custom Dropdown / Segmented Control */}
+            <div className={`p-1.5 rounded-[2rem] flex gap-1 ${darkMode ? 'bg-slate-900' : 'bg-slate-100'}`}>
+                {['bank', 'ewallet', 'cash'].map((type) => (
+                    <button
+                        key={type}
+                        onClick={() => setNewWalletType(type)}
+                        className={`flex-1 py-3 rounded-[1.5rem] text-[10px] font-black uppercase transition-all flex items-center justify-center gap-2 ${
+                            newWalletType === type 
+                            ? 'bg-sky-500 text-white shadow-lg' 
+                            : 'text-slate-400 hover:text-slate-600'
+                        }`}
+                    >
+                        {type === 'bank' && <Landmark size={14}/>}
+                        {type === 'ewallet' && <CreditCard size={14}/>}
+                        {type === 'cash' && <Coins size={14}/>}
+                        {type}
+                    </button>
+                ))}
+            </div>
           </div>
         </div>
-      )}
+
+        <button 
+          onClick={async () => {
+            if(newWalletName){
+              await addDoc(collection(db, "wallets"), { name: newWalletName, type: newWalletType, userId: user.uid, createdAt: new Date() }); 
+              setNewWalletName(""); 
+              setShowAddWallet(false);
+            }
+          }} 
+          className="w-full bg-sky-500 text-white py-5 rounded-[2rem] font-black uppercase text-xs active:scale-95 shadow-xl shadow-sky-500/20 transition-all mt-4"
+        >
+          SIMPAN DOMPET
+        </button>
+      </div>
+    </div>
+  </div>
+)}
 
       {/* MODAL ADD TRANSACTION */}
       {showAddTransaction && (
