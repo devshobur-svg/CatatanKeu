@@ -1,113 +1,158 @@
 import React, { useState } from "react";
-import { auth } from "../lib/firebase"; // sesuaikan path lib firebase kamu
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from "firebase/auth";
-import { LogIn, UserPlus, Mail, Lock, Sparkles } from "lucide-react";
+// 1. IMPORT AUTH & PROVIDER DARI LIB LO
+import { auth, googleProvider } from "../lib/firebase";
+
+// 2. IMPORT SEMUA FUNGSI FIREBASE AUTH SECARA EKSPLISIT
+import { 
+  signInWithPopup, 
+  signInWithEmailAndPassword, 
+  createUserWithEmailAndPassword 
+} from "firebase/auth";
+
+// 3. IMPORT SEMUA ICON LUCIDE
+import { BarChart3, Mail, Lock, ArrowRight, ShieldCheck } from "lucide-react";
 
 const Login = () => {
   const [isRegister, setIsRegister] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
   const handleAuth = async (e) => {
     e.preventDefault();
-    setLoading(true);
+    setError("");
+    
+    // Validasi dasar
+    if (!email || !password) {
+      setError("Email dan Password wajib diisi.");
+      return;
+    }
+
     try {
       if (isRegister) {
+        // Fungsi ini yang tadi bikin error karena lupa di-import
         await createUserWithEmailAndPassword(auth, email, password);
       } else {
         await signInWithEmailAndPassword(auth, email, password);
       }
     } catch (err) {
-      alert(err.message);
+      console.error(err.code);
+      if (err.code === 'auth/user-not-found') setError("Email tidak terdaftar.");
+      else if (err.code === 'auth/wrong-password') setError("Password salah.");
+      else if (err.code === 'auth/email-already-in-use') setError("Email sudah digunakan.");
+      else if (err.code === 'auth/weak-password') setError("Password minimal 6 karakter.");
+      else setError("Gagal masuk. Cek koneksi & data lo.");
     }
-    setLoading(false);
+  };
+
+  const handleGoogle = async () => {
+    try {
+      await signInWithPopup(auth, googleProvider);
+    } catch (err) {
+      setError("Gagal masuk dengan Google.");
+    }
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col justify-center items-center p-6 font-sans">
-      {/* Dekorasi Background */}
-      <div className="fixed top-0 left-0 w-full h-64 bg-sky-500 rounded-b-[4rem] z-0 shadow-lg"></div>
+    <div className="min-h-screen flex flex-col max-w-md mx-auto bg-[#F8F9FE] text-slate-900 relative overflow-hidden font-sans">
       
-      <div className="w-full max-w-md z-10 space-y-8">
-        {/* Logo & Header */}
-        <div className="text-center space-y-2">
-          <div className="w-20 h-20 bg-white rounded-[2rem] shadow-xl flex items-center justify-center mx-auto mb-4 border-4 border-sky-100">
-            <Sparkles className="text-sky-500" size={40} />
+      {/* BACKGROUND ORNAMENTS */}
+      <div className="absolute top-0 right-0 w-64 h-64 bg-blue-100 rounded-full -mr-32 -mt-32 blur-3xl opacity-50"></div>
+      <div className="absolute bottom-0 left-0 w-64 h-64 bg-indigo-100 rounded-full -ml-32 -mb-32 blur-3xl opacity-50"></div>
+
+      <div className="flex-1 flex flex-col justify-center px-8 relative z-10">
+        
+        {/* BRANDING LOGO */}
+        <div className="flex flex-col items-center mb-10 animate-in fade-in zoom-in duration-700">
+          <div className="w-20 h-20 rounded-[2.5rem] bg-blue-600 flex items-center justify-center text-white shadow-2xl shadow-blue-200 mb-6 active:scale-90 transition-all">
+            <BarChart3 size={40} />
           </div>
-          <h1 className="text-white text-3xl font-black italic tracking-tighter">FinansialKu.</h1>
-          <p className="text-sky-100 text-sm font-medium tracking-wide uppercase opacity-80">
-            {isRegister ? "Mulai Kelola Uangmu" : "Selamat Datang Kembali"}
-          </p>
+          <h1 className="text-3xl font-black tracking-tighter italic text-slate-900 leading-none uppercase">FinansialKu.</h1>
+          <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400 mt-3 italic">Smart Money Management</p>
         </div>
 
-        {/* Card Form */}
-        <div className="bg-white p-8 rounded-[3rem] shadow-2xl border border-slate-100">
-          <form onSubmit={handleAuth} className="space-y-5">
-            {/* Email Input */}
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Email Address</label>
-              <div className="relative">
-                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
-                <input 
-                  type="email" 
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-100 p-4 pl-12 rounded-2xl outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500 transition-all text-sm font-bold"
-                  placeholder="name@email.com"
-                  required
-                />
-              </div>
+        {/* LOGIN CARD */}
+        <div className="bg-white p-8 rounded-[3.5rem] shadow-2xl shadow-slate-200/60 border border-white/50 animate-in slide-in-from-bottom duration-700">
+          <div className="mb-8 px-2">
+            <h2 className="text-xl font-black italic uppercase tracking-tight text-slate-800">
+              {isRegister ? "Join Us" : "Welcome Back"}
+            </h2>
+            <p className="text-[10px] font-black text-slate-400 mt-1 uppercase tracking-tighter opacity-60">
+              {isRegister ? "Create your wealth account" : "Manage your budget easily"}
+            </p>
+          </div>
+
+          <form onSubmit={handleAuth} className="space-y-4">
+            <div className="relative flex items-center group">
+              <Mail size={18} className="absolute left-5 text-slate-300 group-focus-within:text-blue-600 transition-colors" />
+              <input 
+                type="email" 
+                placeholder="EMAIL ADDRESS"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full pl-14 pr-6 py-5 bg-slate-50 border-none rounded-3xl outline-none font-black text-[11px] uppercase shadow-inner focus:ring-2 focus:ring-blue-100 transition-all"
+                required
+              />
             </div>
 
-            {/* Password Input */}
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Password</label>
-              <div className="relative">
-                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
-                <input 
-                  type="password" 
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-100 p-4 pl-12 rounded-2xl outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500 transition-all text-sm font-bold"
-                  placeholder="••••••••"
-                  required
-                />
-              </div>
+            <div className="relative flex items-center group">
+              <Lock size={18} className="absolute left-5 text-slate-300 group-focus-within:text-blue-600 transition-colors" />
+              <input 
+                type="password" 
+                placeholder="PASSWORD"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full pl-14 pr-6 py-5 bg-slate-50 border-none rounded-3xl outline-none font-black text-[11px] uppercase shadow-inner focus:ring-2 focus:ring-blue-100 transition-all"
+                required
+              />
             </div>
 
-            {/* Submit Button */}
+            {error && (
+              <div className="px-4 py-3 bg-red-50 rounded-2xl border border-red-100">
+                <p className="text-[9px] font-black text-red-500 uppercase italic tracking-tight leading-relaxed">{error}</p>
+              </div>
+            )}
+
             <button 
-              type="submit" 
-              disabled={loading}
-              className="w-full bg-sky-500 text-white py-4 rounded-2xl font-black uppercase text-xs tracking-widest shadow-xl shadow-sky-100 active:scale-95 transition-all flex items-center justify-center gap-2"
+              type="submit"
+              className="w-full py-6 bg-blue-600 text-white rounded-[2.5rem] font-black uppercase italic tracking-widest shadow-xl shadow-blue-200 active:scale-95 transition-all flex items-center justify-center gap-3 mt-2"
             >
-              {loading ? (
-                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-              ) : (
-                <>
-                  {isRegister ? <UserPlus size={18}/> : <LogIn size={18}/>}
-                  {isRegister ? "Daftar Sekarang" : "Masuk Ke Akun"}
-                </>
-              )}
+              <span>{isRegister ? "Create Account" : "Sign In"}</span>
+              <ArrowRight size={18} />
             </button>
           </form>
 
-          {/* Switch Auth */}
-          <div className="mt-8 text-center">
-            <button 
-              onClick={() => setIsRegister(!isRegister)}
-              className="text-slate-400 text-xs font-bold hover:text-sky-500 transition-colors"
-            >
-              {isRegister ? "Sudah punya akun? Masuk" : "Belum punya akun? Daftar gratis"}
-            </button>
+          <div className="flex items-center my-8">
+            <div className="flex-1 h-[1px] bg-slate-100"></div>
+            <span className="px-4 text-[9px] font-black text-slate-300 uppercase italic tracking-widest">Or</span>
+            <div className="flex-1 h-[1px] bg-slate-100"></div>
           </div>
+
+          <button 
+            type="button"
+            onClick={handleGoogle}
+            className="w-full py-5 bg-white border border-slate-100 text-slate-700 rounded-[2rem] font-black uppercase text-[10px] tracking-widest flex items-center justify-center gap-3 hover:bg-slate-50 active:scale-95 transition-all shadow-sm"
+          >
+            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/action/google.svg" className="w-5 h-5" alt="google" />
+            Continue with Google
+          </button>
         </div>
 
-        {/* Footer */}
-        <p className="text-center text-slate-300 text-[10px] font-bold uppercase tracking-widest">
-          Secure & Encrypted by Firebase
-        </p>
+        <div className="mt-8 text-center">
+          <button 
+            type="button"
+            onClick={() => setIsRegister(!isRegister)}
+            className="text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-blue-600 transition-colors italic p-2"
+          >
+            {isRegister ? "Already have an account? Sign In" : "Don't have an account? Sign Up"}
+          </button>
+        </div>
+
+      </div>
+
+      <div className="p-8 flex items-center justify-center gap-2 opacity-30 mt-auto">
+        <ShieldCheck size={14} />
+        <span className="text-[9px] font-black uppercase tracking-widest italic tracking-tighter">Encrypted Secure Access</span>
       </div>
     </div>
   );

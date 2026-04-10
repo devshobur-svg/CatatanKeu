@@ -1,13 +1,9 @@
-// Import the functions you need from the SDKs you need
+// 1. Import fungsi yang dibutuhkan
 import { initializeApp } from "firebase/app";
-import { getAuth } from "firebase/auth";
+import { getAuth, GoogleAuthProvider } from "firebase/auth"; // FIX: Gabungkan import di sini
 import { getFirestore } from "firebase/firestore";
 
-// TODO: Add SDKs for Firebase products that you want to use
-// https://firebase.google.com/docs/web/setup#available-libraries
-
-// Your web app's Firebase configuration
-// For Firebase JS SDK v7.20.0 and later, measurementId is optional
+// 2. Firebase configuration lo
 const firebaseConfig = {
   apiKey: "AIzaSyDlnsDsJ5QSNn_NV8UclFlrweCgGE5Djjk",
   authDomain: "keuangan-6641f.firebaseapp.com",
@@ -18,10 +14,10 @@ const firebaseConfig = {
   measurementId: "G-B4YZF8J0XG"
 };
 
-// Initialize Firebase
+// 3. Initialize Firebase
 const app = initializeApp(firebaseConfig);
+
+// 4. Export instance untuk digunakan di Login.jsx dan App.jsx
 export const auth = getAuth(app);
 export const db = getFirestore(app);
-
-
-
+export const googleProvider = new GoogleAuthProvider(); // Sekarang ini sudah aman
