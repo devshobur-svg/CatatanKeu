@@ -23,6 +23,9 @@ import AddTransactionModal from "./components/modals/AddTransactionModal";
 import AddCategoryModal from "./components/modals/AddCategoryModal";
 import AddWalletModal from "./components/modals/AddWalletModal";
 
+// Import Modal Baru
+import NotificationModal from "./components/modals/NotificationModal";
+
 
 function App() {
   const getDynamicFontSize = (length) => {
@@ -84,6 +87,58 @@ function App() {
     if (darkMode) document.documentElement.classList.add('dark');
     else document.documentElement.classList.remove('dark');
   }, [lang, darkMode]);
+
+  // --- LOGIC NOTIFIKASI OTOMATIS (Activity Center) ---
+  const notifications = useMemo(() => {
+    if (!user) return [];
+    const notifs = [];
+
+    // 1. Notif Transaksi Terbaru (3 Terakhir)
+    allTransactions.slice(0, 3).forEach(tr => {
+      notifs.push({
+        id: `tr-${tr.id}`,
+        type: tr.type === 'income' ? 'success' : 'transaction',
+        title: tr.type === 'income' ? 'Cuan Masuk!' : 'Berhasil Bayar',
+        desc: `${tr.category}: Rp ${formatRupiah(tr.amount)}`,
+        time: tr.createdAt,
+        icon: tr.type === 'income' ? '💰' : '💸'
+      });
+    });
+
+    // 2. Notif Budget Kritis (>80%)
+    categories.forEach(cat => {
+      const spent = allTransactions
+        .filter(tr => tr.category === cat.name && tr.type === 'expense')
+        .reduce((a, b) => a + Number(b.amount), 0);
+      const perc = (spent / cat.limit) * 100;
+
+      if (perc >= 100) {
+        notifs.push({
+          id: `limit-${cat.id}`,
+          type: 'danger',
+          title: 'Budget Jebol!',
+          desc: `Kategori ${cat.name} sudah melewati limit.`,
+          time: new Date(),
+          icon: '🚫'
+        });
+      } else if (perc >= 80) {
+        notifs.push({
+          id: `warn-${cat.id}`,
+          type: 'warning',
+          title: 'Dompet Tipis',
+          desc: `Budget ${cat.name} sudah terpakai ${perc.toFixed(0)}%.`,
+          time: new Date(),
+          icon: '⚠️'
+        });
+      }
+    });
+
+    return notifs.sort((a, b) => {
+      const timeA = a.time?.seconds ? a.time.seconds * 1000 : new Date(a.time).getTime();
+      const timeB = b.time?.seconds ? b.time.seconds * 1000 : new Date(b.time).getTime();
+      return timeB - timeA;
+    });
+  }, [allTransactions, categories, user]);
 
   // --- FIX LOGIC STATS ---
   const stats = useMemo(() => {
@@ -317,7 +372,12 @@ function App() {
               <h1 className="text-xl font-black tracking-tighter italic">FINANSIALKU.</h1>
           </div>
           <div className="flex items-center gap-2">
-              <button onClick={() => setShowNotif(true)} className="p-2 text-slate-400 active:scale-90 transition-all"><Bell size={22}/></button>
+              <button onClick={() => setShowNotif(true)} className="relative p-2 text-slate-400 active:scale-90 transition-all">
+                  <Bell size={22}/>
+                  {notifications.length > 0 && (
+                      <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-rose-500 rounded-full border-2 border-[#F8F9FE] dark:border-slate-900"></span>
+                  )}
+              </button>
               <button onClick={() => setDarkMode(!darkMode)} className="p-2 bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700">{darkMode ? <Sun size={20} className="text-yellow-400"/> : <Moon size={20} className="text-slate-600"/>}</button>
           </div>
         </div>
@@ -346,6 +406,7 @@ function App() {
           </div>
       </div>
 
+      <NotificationModal show={showNotif} setShow={setShowNotif} notifications={notifications} formatRupiah={formatRupiah} />
       <ScannerModal show={showScanner} setShow={setShowScanner} darkMode={darkMode} setIsScanning={setIsScanning} isScanning={isScanning} setForm={setForm} setShowAddTransaction={setShowAddTransaction} showNotice={showNotice} />
       <SplitBillModal show={showSplitModal} setShow={setShowSplitModal} darkMode={darkMode} formatRupiah={formatRupiah} getDynamicFontSize={getDynamicFontSize} />
       <InsightModal show={showInsight} setShow={setShowInsight} darkMode={darkMode} categories={categories} allTransactions={allTransactions} stats={stats} formatRupiah={formatRupiah} />
