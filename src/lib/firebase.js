@@ -1,23 +1,19 @@
-// 1. Import fungsi yang dibutuhkan
 import { initializeApp } from "firebase/app";
-import { getAuth, GoogleAuthProvider } from "firebase/auth"; // FIX: Gabungkan import di sini
+import { getAuth, GoogleAuthProvider } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 
-// 2. Firebase configuration lo
 const firebaseConfig = {
-  apiKey: "AIzaSyDlnsDsJ5QSNn_NV8UclFlrweCgGE5Djjk",
-  authDomain: "keuangan-6641f.firebaseapp.com",
-  projectId: "keuangan-6641f",
-  storageBucket: "keuangan-6641f.firebasestorage.app",
-  messagingSenderId: "477908458278",
-  appId: "1:477908458278:web:df4f2446224654d37abfe7",
-  measurementId: "G-B4YZF8J0XG"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
 };
 
-// 3. Initialize Firebase
 const app = initializeApp(firebaseConfig);
 
-// 4. Export instance untuk digunakan di Login.jsx dan App.jsx
 export const auth = getAuth(app);
 export const db = getFirestore(app);
-export const googleProvider = new GoogleAuthProvider(); // Sekarang ini sudah aman
+export const googleProvider = new GoogleAuthProvider();
