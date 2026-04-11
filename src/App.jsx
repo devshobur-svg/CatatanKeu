@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { auth, db } from "./lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
-import { collection, addDoc, onSnapshot, query, where, orderBy } from "firebase/firestore";
+import { collection, addDoc, onSnapshot, query, where, orderBy, deleteDoc, doc, updateDoc } from "firebase/firestore";
 import { 
-  Home as HomeIcon, Wallet as WalletIcon, User as UserIcon, Tag as TagIcon, Plus, Bell, Sun, Moon, BarChart3, X, Info, Sparkles, Loader2, Camera, Delete, ShieldCheck 
+  Home as HomeIcon, Wallet as WalletIcon, User as UserIcon, Tag as TagIcon, Plus, Bell, Sun, Moon, BarChart3, X, Info, Sparkles, Loader2, Camera, Delete, ShieldCheck,
+  RefreshCcw 
 } from "lucide-react";
-import { createWorker } from 'tesseract.js'; 
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
@@ -15,36 +15,37 @@ import HomePage from "./pages/Home";
 import WalletPage from "./pages/Wallet";
 import CategoryPage from "./pages/Category";
 import ProfilePage from "./pages/Profile";
+import SubscriptionPage from "./pages/Subscription"; 
 import { TRANSLATIONS, formatRupiah } from "./utils/constants";
+
+// Import Modals & Security
 import ScannerModal from "./components/modals/ScannerModal";
 import SplitBillModal from "./components/modals/SplitBillModal";
 import InsightModal from "./components/modals/InsightModal";
 import AddTransactionModal from "./components/modals/AddTransactionModal";
 import AddCategoryModal from "./components/modals/AddCategoryModal";
 import AddWalletModal from "./components/modals/AddWalletModal";
-
-// Import Modal Baru
+import AddSubModal from "./components/modals/AddSubModal"; 
 import NotificationModal from "./components/modals/NotificationModal";
-
+import SecurityLock from "./components/SecurityLock";
 
 function App() {
-  const getDynamicFontSize = (length) => {
-    if (length > 15) return "text-2xl";
-    if (length > 12) return "text-3xl";
-    if (length > 10) return "text-4xl";
-    return "text-5xl";
-  };
-
+  // --- 1. SECURITY & AUTH STATES ---
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [isLocked, setIsLocked] = useState(true); // Default Locked
+
+  // --- 2. UI & DATA STATES ---
   const [activeTab, setActiveTab] = useState("home");
   const [lang, setLang] = useState(() => localStorage.getItem("fin_lang") || "id");
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem("fin_dark") === "true");
   const [historyFilter, setHistoryFilter] = useState("all"); 
+  const [selectedDate, setSelectedDate] = useState(""); 
   
   const [wallets, setWallets] = useState([]);
   const [categories, setCategories] = useState([]);
   const [allTransactions, setAllTransactions] = useState([]); 
+  const [subscriptions, setSubscriptions] = useState([]); 
   
   const [showInsight, setShowInsight] = useState(false);
   const [showBalance, setShowBalance] = useState(true);
@@ -53,34 +54,67 @@ function App() {
   const [showSplitModal, setShowSplitModal] = useState(false);
   const [showAddWallet, setShowAddWallet] = useState(false);
   const [showAddCategory, setShowAddCategory] = useState(false);
+  const [showAddSub, setShowAddSub] = useState(false); 
   const [showNotif, setShowNotif] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
 
   const [form, setForm] = useState({ amount: "", category: "", type: "expense", walletId: "", note: "" });
   const [newWallet, setNewWallet] = useState({ name: "", type: "bank", balance: "" });
+  const [newSub, setNewSub] = useState({ name: "", price: "", dueDay: "" }); 
+  const [editingWalletId, setEditingWalletId] = useState(null);
   const [newCat, setNewCat] = useState({ name: "", limit: "" });
   const [toast, setToast] = useState({ show: false, msg: "", type: "success" });
 
   const t = TRANSLATIONS[lang];
+
+  const getDynamicFontSize = (length) => {
+    if (length > 15) return "text-2xl";
+    if (length > 12) return "text-3xl";
+    if (length > 10) return "text-4xl";
+    return "text-5xl";
+  };
 
   const showNotice = (msg, type = "success") => {
     setToast({ show: true, msg, type });
     setTimeout(() => setToast(p => ({ ...p, show: false })), 3000);
   };
 
+  // --- 3. LISTENERS & EFFECTS ---
+  
+  // Security Listener (Background/Foreground)
   useEffect(() => {
-    const unsubAuth = onAuthStateChanged(auth, (u) => { setUser(u); setLoading(false); });
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        // Aktifkan baris bawah jika ingin apps terkunci otomatis saat balik dari background
+        // setIsLocked(true); 
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, []);
+
+  // Auth Listener
+  useEffect(() => {
+    const unsubAuth = onAuthStateChanged(auth, (u) => { 
+        setUser(u); 
+        setLoading(false); 
+        if(!u) setIsLocked(true); // Reset lock state saat logout
+    });
     return () => unsubAuth();
   }, []);
 
+  // Firestore Listeners
   useEffect(() => {
     if (!user) return;
     const unsubW = onSnapshot(query(collection(db, "wallets"), where("userId", "==", user.uid)), (s) => setWallets(s.docs.map(d => ({ id: d.id, ...d.data() }))));
     const unsubC = onSnapshot(query(collection(db, "categories"), where("userId", "==", user.uid), orderBy("name", "asc")), (s) => setCategories(s.docs.map(d => ({ id: d.id, ...d.data() }))));
     const unsubT = onSnapshot(query(collection(db, "transactions"), where("userId", "==", user.uid), orderBy("createdAt", "desc")), (s) => setAllTransactions(s.docs.map(d => ({ id: d.id, ...d.data() }))));
-    return () => { unsubW(); unsubC(); unsubT(); };
+    const unsubS = onSnapshot(query(collection(db, "subscriptions"), where("userId", "==", user.uid)), (s) => setSubscriptions(s.docs.map(d => ({ id: d.id, ...d.data() }))));
+    
+    return () => { unsubW(); unsubC(); unsubT(); unsubS(); };
   }, [user]);
 
+  // Local Storage Sync
   useEffect(() => {
     localStorage.setItem("fin_lang", lang);
     localStorage.setItem("fin_dark", darkMode);
@@ -88,79 +122,27 @@ function App() {
     else document.documentElement.classList.remove('dark');
   }, [lang, darkMode]);
 
-  // --- LOGIC NOTIFIKASI OTOMATIS (Activity Center) ---
+  // --- 4. DATA LOGIC (STABLE) ---
+  const stats = useMemo(() => {
+    const baseBalance = wallets.reduce((acc, w) => acc + (Number(w.balance) || 0), 0);
+    const inc = allTransactions.filter(tr => tr.type === 'income').reduce((a, b) => a + (Number(b.amount) || 0), 0);
+    const exp = allTransactions.filter(tr => tr.type === 'expense').reduce((a, b) => a + (Number(b.amount) || 0), 0);
+    return { income: inc, expense: exp, balance: baseBalance + inc - exp };
+  }, [allTransactions, wallets]);
+
   const notifications = useMemo(() => {
     if (!user) return [];
-    const notifs = [];
-
-    // 1. Notif Transaksi Terbaru (3 Terakhir)
-    allTransactions.slice(0, 3).forEach(tr => {
-      notifs.push({
+    return allTransactions.slice(0, 3).map(tr => ({
         id: `tr-${tr.id}`,
         type: tr.type === 'income' ? 'success' : 'transaction',
         title: tr.type === 'income' ? 'Cuan Masuk!' : 'Berhasil Bayar',
         desc: `${tr.category}: Rp ${formatRupiah(tr.amount)}`,
         time: tr.createdAt,
         icon: tr.type === 'income' ? '💰' : '💸'
-      });
-    });
+    }));
+  }, [allTransactions, user]);
 
-    // 2. Notif Budget Kritis (>80%)
-    categories.forEach(cat => {
-      const spent = allTransactions
-        .filter(tr => tr.category === cat.name && tr.type === 'expense')
-        .reduce((a, b) => a + Number(b.amount), 0);
-      const perc = (spent / cat.limit) * 100;
-
-      if (perc >= 100) {
-        notifs.push({
-          id: `limit-${cat.id}`,
-          type: 'danger',
-          title: 'Budget Jebol!',
-          desc: `Kategori ${cat.name} sudah melewati limit.`,
-          time: new Date(),
-          icon: '🚫'
-        });
-      } else if (perc >= 80) {
-        notifs.push({
-          id: `warn-${cat.id}`,
-          type: 'warning',
-          title: 'Dompet Tipis',
-          desc: `Budget ${cat.name} sudah terpakai ${perc.toFixed(0)}%.`,
-          time: new Date(),
-          icon: '⚠️'
-        });
-      }
-    });
-
-    return notifs.sort((a, b) => {
-      const timeA = a.time?.seconds ? a.time.seconds * 1000 : new Date(a.time).getTime();
-      const timeB = b.time?.seconds ? b.time.seconds * 1000 : new Date(b.time).getTime();
-      return timeB - timeA;
-    });
-  }, [allTransactions, categories, user]);
-
-  // --- FIX LOGIC STATS ---
-  const stats = useMemo(() => {
-    // 1. Ambil saldo awal (balance statis) dari semua wallet
-    const baseBalance = wallets.reduce((acc, w) => acc + (Number(w.balance) || 0), 0);
-    
-    // 2. Filter transaksi dengan pengecekan case-insensitive
-    const inc = allTransactions
-      .filter(tr => tr.type?.toLowerCase() === 'income')
-      .reduce((a, b) => a + (Number(b.amount) || 0), 0);
-      
-    const exp = allTransactions
-      .filter(tr => tr.type?.toLowerCase() === 'expense')
-      .reduce((a, b) => a + (Number(b.amount) || 0), 0);
-
-    return { 
-      income: inc, 
-      expense: exp, 
-      balance: baseBalance + inc - exp 
-    };
-  }, [allTransactions, wallets]);
-
+  // --- 5. HANDLERS (STABLE) ---
   const handleNumpad = (val, target) => {
     const setters = { form: setForm, cat: setNewCat, wallet: setNewWallet }; 
     const setter = setters[target];
@@ -174,17 +156,60 @@ function App() {
 
   const handleSaveTransaction = async () => {
     if (!form.amount || !form.category || !form.walletId) return showNotice("Data incomplete!", "error");
-    // Gunakan lowercase untuk konsistensi filter
-    await addDoc(collection(db, "transactions"), { 
-      ...form, 
-      type: form.type.toLowerCase(), 
-      amount: Number(form.amount), 
-      userId: user.uid, 
-      createdAt: new Date() 
-    });
+    await addDoc(collection(db, "transactions"), { ...form, type: form.type.toLowerCase(), amount: Number(form.amount), userId: user.uid, createdAt: new Date() });
     setShowAddTransaction(false); 
     setForm({ amount: "", category: "", type: "expense", walletId: "", note: "" });
     showNotice("Tersimpan!");
+  };
+
+  const handleEditWallet = (wallet) => {
+    setNewWallet({ name: wallet.name || "", type: wallet.type || "bank", balance: wallet.balance !== undefined ? String(wallet.balance) : "0" });
+    setEditingWalletId(wallet.id);
+    setShowAddWallet(true);
+  };
+
+  const handleSaveWallet = async () => {
+    if (!newWallet.name) return showNotice("Isi nama wallet!", "error");
+    const walletData = { name: newWallet.name, type: newWallet.type, balance: Number(newWallet.balance || 0), userId: user.uid, updatedAt: new Date() };
+    try {
+      if (editingWalletId) {
+        await updateDoc(doc(db, "wallets", editingWalletId), walletData);
+        showNotice("Wallet diupdate!");
+      } else {
+        await addDoc(collection(db, "wallets"), { ...walletData, createdAt: new Date() });
+        showNotice("Wallet ditambahkan!");
+      }
+      setShowAddWallet(false); setEditingWalletId(null); setNewWallet({ name: "", type: "bank", balance: "" });
+    } catch (err) { showNotice("Gagal menyimpan", "error"); }
+  };
+
+  const handleSaveSub = async () => {
+    if (!newSub.name || !newSub.price || !newSub.dueDay) return showNotice("Isi data lengkap!", "error");
+    await addDoc(collection(db, "subscriptions"), { ...newSub, userId: user.uid, createdAt: new Date() });
+    setShowAddSub(false); setNewSub({ name: "", price: "", dueDay: "" });
+    showNotice("Langganan aktif!");
+  };
+
+  const handleDeleteSub = async (id) => {
+    if (window.confirm("Hapus langganan ini?")) { await deleteDoc(doc(db, "subscriptions", id)); showNotice("Dihapus!"); }
+  };
+
+  const handleDeleteTransaction = async (id) => {
+    if (!id || !window.confirm("Hapus transaksi ini?")) return;
+    await deleteDoc(doc(db, "transactions", id));
+    showNotice("Dihapus!");
+  };
+
+  const handleDeleteWallet = async (id) => {
+    if (!id || !window.confirm("Hapus dompet ini?")) return;
+    await deleteDoc(doc(db, "wallets", id));
+    showNotice("Dompet dihapus!");
+  };
+
+  const handleDeleteCategory = async (id) => {
+    if (!id || !window.confirm("Hapus kategori ini?")) return;
+    await deleteDoc(doc(db, "categories", id));
+    showNotice("Kategori dihapus!");
   };
 
   const handleSaveCategory = async () => {
@@ -194,235 +219,88 @@ function App() {
     showNotice("Kategori ditambahkan!");
   };
 
-  const handleSaveWallet = async () => {
-    if (!newWallet.name) return showNotice("Isi nama wallet!", "error");
-    await addDoc(collection(db, "wallets"), { ...newWallet, balance: Number(newWallet.balance || 0), userId: user.uid, createdAt: new Date() });
-    setShowAddWallet(false); setNewWallet({ name: "", type: "bank", balance: "" });
-    showNotice("Wallet ditambahkan!");
+  // --- POWERFULL EXPORT DNA DASHBOARD ---
+  const shareWhatsApp = async () => {
+    const docPDF = new jsPDF();
+    const fileName = `Laporan_FinansialKu_${new Date().getTime()}.pdf`;
+    const dateStr = new Date().toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' });
+
+    try {
+        docPDF.setFillColor(15, 23, 42); docPDF.rect(0, 0, 210, 45, 'F');
+        docPDF.setTextColor(255, 255, 255); docPDF.setFontSize(22); docPDF.setFont("helvetica", "bold"); docPDF.text("FINANSIALKU REPORT", 15, 25);
+        
+        let currentY = 55;
+        const walletRows = (wallets || []).map(w => {
+            const inc = allTransactions.filter(tr => tr.walletId === w.id && tr.type === 'income').reduce((a, b) => a + Number(b.amount || 0), 0);
+            const exp = allTransactions.filter(tr => tr.walletId === w.id && tr.type === 'expense').reduce((a, b) => a + Number(b.amount || 0), 0);
+            return [(w.name || '-').toUpperCase(), (w.type || '-').toUpperCase(), `Rp ${formatRupiah(Number(w.balance || 0) + inc - exp)}` ];
+        });
+
+        autoTable(docPDF, { startY: currentY + 5, head: [['WALLET', 'TYPE', 'BALANCE']], body: walletRows, theme: 'grid', headStyles: { fillColor: [30, 64, 175] } });
+        
+        const pdfBlob = docPDF.output('blob');
+        const file = new File([pdfBlob], fileName, { type: 'application/pdf' });
+        
+        try {
+            if (navigator.canShare && navigator.canShare({ files: [file] })) {
+                await navigator.share({ files: [file], title: 'Financial Report' });
+            } else {
+                docPDF.save(fileName);
+            }
+        } catch (sErr) { docPDF.save(fileName); }
+    } catch (err) { showNotice("Gagal ekspor data", "error"); }
   };
 
-  const exportPDF = () => {
-  const doc = new jsPDF();
-  const dateStr = new Date().toLocaleDateString('id-ID', { year: 'numeric', month: 'long', day: 'numeric' });
-  
-  // 1. DESIGN HEADER - Biru Premium
-  doc.setFillColor(30, 64, 175); // Dark Blue ala Bank Digital
-  doc.rect(0, 0, 210, 50, 'F');
-  
-  // Branding FinansialKu
-  doc.setTextColor(255, 255, 255);
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(24);
-  doc.text("FINANSIALKU.", 15, 25);
-  
-  doc.setFontSize(10);
-  doc.setFont("helvetica", "normal");
-  doc.text("Laporan Keuangan Digital Personal", 15, 32);
-  doc.text(`Dicetak pada: ${dateStr}`, 15, 37);
-
-  // 2. SUMMARY SECTION (Inside Header)
-  doc.setFillColor(255, 255, 255, 0.1);
-  doc.roundedRect(140, 10, 55, 30, 3, 3, 'F');
-  doc.setFontSize(9);
-  doc.text("TOTAL BALANCE", 145, 18);
-  doc.setFontSize(14);
-  doc.setFont("helvetica", "bold");
-  doc.text(`Rp ${formatRupiah(stats.balance)}`, 145, 28);
-
-  // 3. TRANSACTION TABLE - Desain Clean ala History Dashboard
-  autoTable(doc, {
-    startY: 60,
-    head: [['TANGGAL & JAM', 'KATEGORI', 'KETERANGAN', 'TIPE', 'NOMINAL']],
-    body: allTransactions.map(tr => {
-      const dateObj = tr.createdAt.seconds ? new Date(tr.createdAt.seconds * 1000) : new Date(tr.createdAt);
-      const formattedDate = dateObj.toLocaleDateString('id-ID', { day: '2-digit', month: 'short' });
-      const formattedTime = dateObj.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
-      
-      return [
-        `${formattedDate} | ${formattedTime}`,
-        tr.category.toUpperCase(),
-        tr.note || '-',
-        tr.type === 'income' ? 'PEMASUKAN' : 'PENGELUARAN',
-        { 
-          content: `${tr.type === 'income' ? '+' : '-'} Rp ${formatRupiah(tr.amount)}`,
-          styles: { textColor: tr.type === 'income' ? [16, 185, 129] : [225, 29, 72], fontStyle: 'bold' }
-        }
-      ];
-    }),
-    
-    // Styling Tabel agar selaras dengan UI Dashboard
-    theme: 'striped',
-    headStyles: { 
-      fillColor: [30, 64, 175], 
-      textColor: [255, 255, 255], 
-      fontSize: 10, 
-      fontStyle: 'bold',
-      halign: 'center',
-      cellPadding: 5
-    },
-    bodyStyles: { 
-      fontSize: 9, 
-      cellPadding: 5,
-      textColor: [51, 65, 85] // Slate 700
-    },
-    columnStyles: {
-      0: { cellWidth: 35 },
-      1: { fontStyle: 'bold' },
-      4: { halign: 'right' }
-    },
-    alternateRowStyles: {
-      fillColor: [248, 250, 252] // Slate 50
-    },
-    margin: { left: 15, right: 15 }
-  });
-
-  // 4. FOOTER
-  const finalY = doc.lastAutoTable.finalY || 70;
-  doc.setFontSize(8);
-  doc.setTextColor(148, 163, 184); // Slate 400
-  doc.setFont("helvetica", "italic");
-  doc.text("Laporan ini dibuat secara otomatis melalui aplikasi FinansialKu.", 15, finalY + 15);
-
-  doc.save(`Laporan_FinansialKu_${new Date().getTime()}.pdf`);
-};
-
-  const shareWhatsApp = async () => {
-  const doc = new jsPDF();
-  const dateStr = new Date().toLocaleDateString('id-ID', { year: 'numeric', month: 'long', day: 'numeric' });
-  const fileName = `Laporan_FinansialKu_${new Date().getTime()}.pdf`;
-
-  // --- LOGIK DESIGN PDF (Sama persis dengan exportPDF agar konsisten) ---
-  doc.setFillColor(30, 64, 175);
-  doc.rect(0, 0, 210, 50, 'F');
-  doc.setTextColor(255, 255, 255);
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(24);
-  doc.text("FINANSIALKU.", 15, 25);
-  doc.setFontSize(10);
-  doc.setFont("helvetica", "normal");
-  doc.text("Laporan Keuangan Digital Personal", 15, 32);
-  
-  // Summary Box
-  doc.setFillColor(255, 255, 255, 0.1);
-  doc.roundedRect(140, 10, 55, 30, 3, 3, 'F');
-  doc.setFontSize(9);
-  doc.text("TOTAL BALANCE", 145, 18);
-  doc.setFontSize(14);
-  doc.setFont("helvetica", "bold");
-  doc.text(`Rp ${formatRupiah(stats.balance)}`, 145, 28);
-
-  // Table
-  autoTable(doc, {
-    startY: 60,
-    head: [['TANGGAL & JAM', 'KATEGORI', 'KETERANGAN', 'TIPE', 'NOMINAL']],
-    body: allTransactions.map(tr => {
-      const dateObj = tr.createdAt.seconds ? new Date(tr.createdAt.seconds * 1000) : new Date(tr.createdAt);
-      const fDate = dateObj.toLocaleDateString('id-ID', { day: '2-digit', month: 'short' });
-      const fTime = dateObj.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
-      return [
-        `${fDate} | ${fTime}`,
-        tr.category.toUpperCase(),
-        tr.note || '-',
-        tr.type === 'income' ? 'PEMASUKAN' : 'PENGELUARAN',
-        { 
-          content: `${tr.type === 'income' ? '+' : '-'} Rp ${formatRupiah(tr.amount)}`,
-          styles: { textColor: tr.type === 'income' ? [16, 185, 129] : [225, 29, 72], fontStyle: 'bold' }
-        }
-      ];
-    }),
-    theme: 'striped',
-    headStyles: { fillColor: [30, 64, 175], fontSize: 10, fontStyle: 'bold', halign: 'center' },
-    bodyStyles: { fontSize: 9 },
-    columnStyles: { 4: { halign: 'right' } }
-  });
-
-  // --- PROSES SHARING FILE PDF ---
-  try {
-    const pdfBlob = doc.output('blob');
-    const file = new File([pdfBlob], fileName, { type: 'application/pdf' });
-
-    // Cek apakah browser mendukung fitur Share File
-    if (navigator.canShare && navigator.canShare({ files: [file] })) {
-      await navigator.share({
-        files: [file],
-        title: 'Laporan Keuangan FinansialKu',
-        text: `Halo, ini laporan keuangan saya per tanggal ${dateStr}.`,
-      });
-    } else {
-      // Fallback jika browser tidak support (biasanya di browser jadul/desktop tertentu)
-      doc.save(fileName);
-      showNotice("Browser tdk support share file, PDF otomatis di-download", "info");
-    }
-  } catch (error) {
-    console.error('Error sharing:', error);
-    doc.save(fileName);
-  }
-};
-
-  if (loading) return <div className="min-h-screen flex items-center justify-center bg-white dark:bg-slate-900 text-blue-600 font-black text-2xl animate-pulse italic uppercase tracking-tighter">FinansialKu</div>;
+  // --- 6. RENDER LOGIC (THE SECURITY GATE) ---
+  if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-900 text-blue-600 font-black text-2xl animate-pulse italic uppercase tracking-tighter">FinansialKu</div>;
   if (!user) return <Login />;
+  
+  // RENDER SECURITY LOCK SCREEN (MUST BE AFTER AUTH)
+  if (isLocked) return <SecurityLock onUnlock={() => setIsLocked(false)} />;
 
   return (
     <div className={`min-h-screen flex flex-col max-w-md mx-auto transition-all ${darkMode ? 'bg-slate-900 text-white' : 'bg-[#F8F9FE] text-slate-900'}`}>
       
-      {activeTab === "home" && (
+      {(activeTab !== "profile") && (
         <div className="px-6 pt-12 pb-4 flex justify-between items-center shrink-0">
           <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-2xl bg-blue-600 flex items-center justify-center text-white shadow-lg"><BarChart3 size={20}/></div>
-              <h1 className="text-xl font-black tracking-tighter italic">FINANSIALKU.</h1>
+              <h1 className="text-xl font-black tracking-tighter italic text-slate-900 dark:text-white">FINANSIALKU.</h1>
           </div>
           <div className="flex items-center gap-2">
-              <button onClick={() => setShowNotif(true)} className="relative p-2 text-slate-400 active:scale-90 transition-all">
-                  <Bell size={22}/>
-                  {notifications.length > 0 && (
-                      <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-rose-500 rounded-full border-2 border-[#F8F9FE] dark:border-slate-900"></span>
-                  )}
-              </button>
-              <button onClick={() => setDarkMode(!darkMode)} className="p-2 bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700">{darkMode ? <Sun size={20} className="text-yellow-400"/> : <Moon size={20} className="text-slate-600"/>}</button>
+              <button onClick={() => setActiveTab('profile')} className="p-2 bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 active:scale-90 transition-all text-slate-600 dark:text-slate-300"><UserIcon size={20}/></button>
+              <button onClick={() => setDarkMode(!darkMode)} className="p-2 bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 active:scale-90 transition-all">{darkMode ? <Sun size={20} className="text-yellow-400"/> : <Moon size={20} className="text-slate-600"/>}</button>
           </div>
         </div>
       )}
 
       <div className={`flex-1 overflow-y-auto no-scrollbar pb-32 ${activeTab === "home" ? "px-6" : ""}`}>
-        {activeTab === "home" && (
-            <HomePage stats={stats} t={t} formatRupiah={formatRupiah} showBalance={showBalance} setShowBalance={setShowBalance}
-              setShowScanner={setShowScanner} setShowSplitModal={setShowSplitModal} setShowInsight={setShowInsight}
-              categories={categories} allTransactions={allTransactions} historyFilter={historyFilter} setHistoryFilter={setHistoryFilter}
-              setShowNotif={setShowNotif} exportPDF={exportPDF} shareWhatsApp={shareWhatsApp}
-            />
-        )}
-        {activeTab === "wallet" && <WalletPage wallets={wallets} allTransactions={allTransactions} formatRupiah={formatRupiah} setShowAddWallet={setShowAddWallet} t={t} />}
-        {activeTab === "category" && <CategoryPage categories={categories} allTransactions={allTransactions} formatRupiah={formatRupiah} setShowAddCategory={setShowAddCategory} t={t} />}
-        {activeTab === "profile" && <ProfilePage user={user} t={t} lang={lang} setLang={setLang} darkMode={darkMode} setDarkMode={setDarkMode} setActiveTab={setActiveTab} exportPDF={exportPDF} />}
+        {activeTab === "home" && <HomePage stats={stats} t={t} formatRupiah={formatRupiah} showBalance={showBalance} setShowBalance={setShowBalance} setShowScanner={setShowScanner} setShowSplitModal={setShowSplitModal} setShowInsight={setShowInsight} categories={categories} allTransactions={allTransactions} historyFilter={historyFilter} setHistoryFilter={setHistoryFilter} setShowNotif={setShowNotif} shareWhatsApp={shareWhatsApp} selectedDate={selectedDate} setSelectedDate={setSelectedDate} handleDeleteTransaction={handleDeleteTransaction} />}
+        {activeTab === "wallet" && <WalletPage wallets={wallets} allTransactions={allTransactions} formatRupiah={formatRupiah} setShowAddWallet={setShowAddWallet} t={t} handleDeleteWallet={handleDeleteWallet} handleEditWallet={handleEditWallet} />}
+        {activeTab === "category" && <CategoryPage categories={categories} allTransactions={allTransactions} formatRupiah={formatRupiah} setShowAddCategory={setShowAddCategory} t={t} handleDeleteCategory={handleDeleteCategory} />}
+        {activeTab === "recurring" && <SubscriptionPage subs={subscriptions} formatRupiah={formatRupiah} setShowAddSub={setShowAddSub} handleDeleteSub={handleDeleteSub} />}
+        {/* FIX: Passing shareWhatsApp prop agar tombol Laporan di Profile jalan */}
+        {activeTab === "profile" && <ProfilePage user={user} t={t} lang={lang} setLang={setLang} darkMode={darkMode} setDarkMode={setDarkMode} setActiveTab={setActiveTab} shareWhatsApp={shareWhatsApp} />}
       </div>
 
       <div className="fixed bottom-8 left-6 right-6 z-[100]">
           <div className="bg-white dark:bg-slate-800 h-20 rounded-[2.5rem] shadow-2xl border border-slate-200 dark:border-slate-700 flex items-center justify-around px-4">
                 <button onClick={() => setActiveTab('home')} className={`p-4 rounded-2xl transition-all ${activeTab === 'home' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-300'}`}><HomeIcon size={24}/></button>
                 <button onClick={() => setActiveTab('category')} className={`p-4 rounded-2xl transition-all ${activeTab === 'category' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-300'}`}><TagIcon size={24}/></button>
-                <button onClick={() => setShowAddTransaction(true)} className="w-14 h-14 bg-slate-900 dark:bg-blue-600 rounded-full flex items-center justify-center text-white shadow-xl -mt-12 border-4 border-[#F8F9FE] dark:border-slate-900 active:scale-90 transition-all shadow-blue-500/30"><Plus size={32}/></button>
+                <button onClick={() => setShowAddTransaction(true)} className="w-14 h-14 bg-slate-900 dark:bg-blue-600 rounded-full flex items-center justify-center text-white shadow-xl -mt-12 border-4 border-[#F8F9FE] dark:border-slate-900 active:scale-90 transition-all"><Plus size={32}/></button>
+                <button onClick={() => setActiveTab('recurring')} className={`p-4 rounded-2xl transition-all ${activeTab === 'recurring' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-300'}`}><RefreshCcw size={24}/></button>
                 <button onClick={() => setActiveTab('wallet')} className={`p-4 rounded-2xl transition-all ${activeTab === 'wallet' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-300'}`}><WalletIcon size={24}/></button>
-                <button onClick={() => setActiveTab('profile')} className={`p-4 rounded-2xl transition-all ${activeTab === 'profile' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-300'}`}><UserIcon size={24}/></button>
           </div>
       </div>
 
       <NotificationModal show={showNotif} setShow={setShowNotif} notifications={notifications} formatRupiah={formatRupiah} />
-      <ScannerModal show={showScanner} setShow={setShowScanner} darkMode={darkMode} setIsScanning={setIsScanning} isScanning={isScanning} setForm={setForm} setShowAddTransaction={setShowAddTransaction} showNotice={showNotice} />
-      <SplitBillModal show={showSplitModal} setShow={setShowSplitModal} darkMode={darkMode} formatRupiah={formatRupiah} getDynamicFontSize={getDynamicFontSize} />
-      <InsightModal show={showInsight} setShow={setShowInsight} darkMode={darkMode} categories={categories} allTransactions={allTransactions} stats={stats} formatRupiah={formatRupiah} />
-      <AddTransactionModal show={showAddTransaction} setShow={setShowAddTransaction} form={form} setForm={setForm} categories={categories} wallets={wallets} handleNumpad={handleNumpad} handleSave={handleSaveTransaction} formatRupiah={formatRupiah} getDynamicFontSize={getDynamicFontSize} t={t} />
-
-      <AddCategoryModal 
-        show={showAddCategory} setShow={setShowAddCategory} newCat={newCat} setNewCat={setNewCat}
-        handleNumpad={handleNumpad} handleSave={handleSaveCategory} formatRupiah={formatRupiah} t={t}
-        getDynamicFontSize={getDynamicFontSize}
-      />
-
-      <AddWalletModal 
-        show={showAddWallet} setShow={setShowAddWallet} newWallet={newWallet} setNewWallet={setNewWallet}
-        handleNumpad={handleNumpad} handleSave={handleSaveWallet} formatRupiah={formatRupiah} t={t}
-        getDynamicFontSize={getDynamicFontSize}
-      />
+      <ScannerModal show={showScanner} setShow={setShowScanner} setForm={setForm} setShowAddTransaction={setShowAddTransaction} showNotice={showNotice} />
+      <SplitBillModal show={showSplitModal} setShow={setShowSplitModal} darkMode={darkMode} formatRupiah={formatRupiah} />
+      <InsightModal show={showInsight} setShow={setShowInsight} categories={categories} allTransactions={allTransactions} stats={stats} formatRupiah={formatRupiah} />
+      <AddTransactionModal show={showAddTransaction} setShow={setShowAddTransaction} form={form} setForm={setForm} categories={categories} wallets={wallets} handleSave={handleSaveTransaction} formatRupiah={formatRupiah} getDynamicFontSize={getDynamicFontSize} t={t} />
+      <AddCategoryModal show={showAddCategory} setShow={setShowAddCategory} newCat={newCat} setNewCat={setNewCat} handleNumpad={handleNumpad} handleSave={handleSaveCategory} formatRupiah={formatRupiah} t={t} getDynamicFontSize={getDynamicFontSize} />
+      <AddWalletModal show={showAddWallet} setShow={(val) => { setShowAddWallet(val); if(!val) { setEditingWalletId(null); setNewWallet({name:"", type:"bank", balance:""}); }}} newWallet={newWallet} setNewWallet={setNewWallet} handleSave={handleSaveWallet} formatRupiah={formatRupiah} editingWalletId={editingWalletId} handleNumpad={handleNumpad} />
+      <AddSubModal show={showAddSub} setShow={setShowAddSub} newSub={newSub} setNewSub={setNewSub} handleSave={handleSaveSub} formatRupiah={formatRupiah} />
 
       {toast.show && (
           <div className="fixed top-12 left-6 right-6 z-[9999] animate-in slide-in-from-top">
@@ -431,7 +309,6 @@ function App() {
               </div>
           </div>
       )}
-      
     </div>
   );
 }

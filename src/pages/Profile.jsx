@@ -1,15 +1,34 @@
-import React from "react";
+import React, { useState } from "react";
 import { signOut } from "firebase/auth";
 import { auth } from "../lib/firebase";
 import { 
-  User, Wallet, Tag, FileText, Moon, Globe, LogOut, ChevronRight, ShieldCheck 
+  User, Wallet, Tag, FileText, Moon, Globe, LogOut, ChevronRight, ShieldCheck, Key, Check, ShieldAlert
 } from "lucide-react";
 
-const ProfilePage = ({ user, t, lang, setLang, darkMode, setDarkMode, setActiveTab, exportPDF }) => {
+const ProfilePage = ({ user, t, lang, setLang, darkMode, setDarkMode, setActiveTab, shareWhatsApp }) => {
+  const [showPinSetup, setShowPinSetup] = useState(false);
+  const [newPin, setNewPin] = useState("");
+  const [pinSaved, setPinSaved] = useState(false);
+
+  // Ambil status PIN saat ini
+  const currentPin = localStorage.getItem("user_pin");
+
+  const handleSavePin = () => {
+    if (newPin.length === 4) {
+      localStorage.setItem("user_pin", newPin);
+      setPinSaved(true);
+      setTimeout(() => {
+        setPinSaved(false);
+        setShowPinSetup(false);
+        setNewPin("");
+      }, 1500);
+    }
+  };
+
   return (
     <div className="animate-in slide-in-from-right duration-500 space-y-4 pb-12">
       
-      {/* 1. PROFILE HEADER - Putih Bersih & Kontras Tinggi */}
+      {/* 1. PROFILE HEADER - High Contrast Navy/Blue DNA */}
       <div className="px-6 pt-16 pb-12 bg-white dark:bg-slate-800 rounded-b-[4rem] shadow-xl shadow-slate-200/50 dark:shadow-none border-b border-slate-100 dark:border-slate-700 text-center relative overflow-hidden">
         <div className="absolute top-0 left-0 w-32 h-32 bg-blue-50 dark:bg-blue-900/10 rounded-full -ml-16 -mt-16 blur-3xl"></div>
         
@@ -30,7 +49,7 @@ const ProfilePage = ({ user, t, lang, setLang, darkMode, setDarkMode, setActiveT
         </div>
       </div>
 
-      {/* 2. MENU GROUPS - High Visibility */}
+      {/* 2. MENU GROUPS */}
       <div className="px-6 space-y-8 pt-6">
         
         {/* General Section */}
@@ -39,7 +58,56 @@ const ProfilePage = ({ user, t, lang, setLang, darkMode, setDarkMode, setActiveT
           <div className="bg-white dark:bg-slate-800 rounded-[3rem] p-3 shadow-xl shadow-slate-200/40 dark:shadow-none border border-slate-50 dark:border-slate-700">
             <MenuLink icon={<Wallet size={18}/>} label={t.wallet} color="text-blue-600" bg="bg-blue-50" onClick={() => setActiveTab('wallet')} />
             <MenuLink icon={<Tag size={18}/>} label={t.category} color="text-orange-500" bg="bg-orange-50" onClick={() => setActiveTab('category')} isBorder />
-            <MenuLink icon={<FileText size={18}/>} label={t.report} color="text-indigo-600" bg="bg-indigo-50" onClick={exportPDF} isBorder />
+            <MenuLink icon={<FileText size={18}/>} label={t.report} color="text-indigo-600" bg="bg-indigo-50" onClick={shareWhatsApp} isBorder />
+          </div>
+        </div>
+
+        {/* Security Section (NEW) */}
+        <div className="space-y-3">
+          <h4 className="text-[10px] font-black uppercase text-slate-400 dark:text-slate-600 px-4 tracking-[0.2em]">Privacy & Safety</h4>
+          <div className="bg-white dark:bg-slate-800 rounded-[3rem] p-3 shadow-xl shadow-slate-200/40 dark:shadow-none border border-slate-50 dark:border-slate-700">
+            <button 
+                onClick={() => setShowPinSetup(!showPinSetup)} 
+                className="w-full flex items-center justify-between p-4 hover:bg-slate-50 dark:hover:bg-white/5 rounded-[2rem] transition-all group"
+            >
+              <div className="flex items-center gap-4">
+                <div className={`p-3 bg-rose-50 dark:bg-rose-500/10 text-rose-600 rounded-2xl group-active:scale-90 transition-all`}>
+                  <Key size={18}/>
+                </div>
+                <div className="text-left">
+                    <span className="block text-xs font-black uppercase tracking-tight text-slate-800 dark:text-white">Security PIN</span>
+                    <span className="text-[8px] font-bold uppercase italic text-slate-400 tracking-widest">
+                        {currentPin ? 'Protected' : 'Not Configured'}
+                    </span>
+                </div>
+              </div>
+              <ChevronRight size={16} className={`text-slate-300 transition-transform ${showPinSetup ? 'rotate-90' : ''}`}/>
+            </button>
+
+            {showPinSetup && (
+                <div className="p-6 pt-2 space-y-4 animate-in slide-in-from-top-4 duration-300 border-t border-slate-50 dark:border-white/5">
+                    <div className="flex flex-col items-center gap-4">
+                        <input 
+                            type="password" 
+                            maxLength={4} 
+                            inputMode="numeric" 
+                            placeholder="----" 
+                            value={newPin} 
+                            onChange={(e) => setNewPin(e.target.value.replace(/\D/g, ""))}
+                            className="bg-slate-100 dark:bg-white/5 w-32 py-4 rounded-2xl text-center text-2xl font-black tracking-[0.5em] outline-none border border-transparent focus:border-blue-500 dark:text-white"
+                        />
+                        <button 
+                            onClick={handleSavePin}
+                            disabled={newPin.length < 4}
+                            className={`w-full py-4 rounded-2xl font-black uppercase text-[10px] tracking-widest transition-all ${
+                                pinSaved ? 'bg-emerald-500 text-white' : 'bg-blue-600 text-white disabled:opacity-30'
+                            }`}
+                        >
+                            {pinSaved ? <span className="flex items-center justify-center gap-2"><Check size={14}/> PIN Updated</span> : "Set New PIN"}
+                        </button>
+                    </div>
+                </div>
+            )}
           </div>
         </div>
 
@@ -48,7 +116,6 @@ const ProfilePage = ({ user, t, lang, setLang, darkMode, setDarkMode, setActiveT
           <h4 className="text-[10px] font-black uppercase text-slate-400 dark:text-slate-600 px-4 tracking-[0.2em]">Preferences</h4>
           <div className="bg-white dark:bg-slate-800 rounded-[3rem] p-3 shadow-xl shadow-slate-200/40 dark:shadow-none border border-slate-50 dark:border-slate-700">
             
-            {/* Appearance Toggle */}
             <div className="flex items-center justify-between p-4">
               <div className="flex items-center gap-4">
                 <div className="p-3 bg-slate-100 dark:bg-slate-700/50 text-slate-600 dark:text-slate-400 rounded-2xl">
@@ -64,7 +131,6 @@ const ProfilePage = ({ user, t, lang, setLang, darkMode, setDarkMode, setActiveT
               </button>
             </div>
 
-            {/* Language Toggle */}
             <button 
               onClick={() => setLang(lang === 'id' ? 'en' : 'id')} 
               className="w-full flex items-center justify-between p-4 border-t border-slate-50 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-white/5 rounded-b-[2rem] transition-all group"
@@ -95,7 +161,6 @@ const ProfilePage = ({ user, t, lang, setLang, darkMode, setDarkMode, setActiveT
   );
 };
 
-// Sub-komponen tetap clean
 const MenuLink = ({ icon, label, color, bg, onClick, isBorder }) => (
   <button 
     onClick={onClick} 

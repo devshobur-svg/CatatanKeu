@@ -1,7 +1,7 @@
 import React from "react";
 import { 
   PieChart as PieChartIcon, Eye, EyeOff, Camera, Scissors, 
-  FileText, MessageCircle, BarChart3 
+  Download, BarChart3 // FileText & MessageCircle dihapus, Download ditambahkan
 } from "lucide-react"; 
 import HistorySection from "../components/HistorySection";
 
@@ -9,7 +9,9 @@ const HomePage = ({
   stats, t, formatRupiah, showBalance, setShowBalance, 
   setShowScanner, setShowSplitModal, setShowInsight, 
   categories, allTransactions, historyFilter, setHistoryFilter,
-  exportPDF, shareWhatsApp, setShowNotif
+  shareWhatsApp, setShowNotif, // exportPDF dihapus dari props
+  selectedDate, setSelectedDate, 
+  handleDeleteTransaction 
 }) => {
 
   const getBalanceFontSize = (len) => {
@@ -21,7 +23,7 @@ const HomePage = ({
   return (
     <div className="space-y-10 animate-in fade-in duration-500 pb-32 px-1">
       
-      {/* 1. CARD SALDO - Diperkuat kontras teksnya untuk Light Mode */}
+      {/* 1. CARD SALDO */}
       <div className="bg-gradient-to-br from-blue-600 to-blue-700 dark:from-blue-700 dark:to-slate-900 rounded-[2.5rem] p-8 text-white shadow-2xl shadow-blue-200 dark:shadow-none relative overflow-hidden">
         <div className="absolute top-0 right-0 w-40 h-40 bg-white/10 rounded-full -mr-20 -mt-20 blur-3xl"></div>
         <div className="relative z-10 text-center">
@@ -39,7 +41,6 @@ const HomePage = ({
           <div className="grid grid-cols-2 gap-4 pt-6 mt-6 border-t border-white/20">
             <div className="text-left">
               <p className="text-[8px] font-black uppercase text-white/60">Income</p>
-              {/* Emerald 300 di Light Mode (background biru) lebih terbaca daripada emerald polos */}
               <p className="text-[13px] font-black italic uppercase text-emerald-300">Rp {formatRupiah(stats.income)}</p>
             </div>
             <div className="text-right">
@@ -50,17 +51,16 @@ const HomePage = ({
         </div>
       </div>
 
-      {/* 2. QUICK MENU - Shadow diperhalus agar tidak kotor di Light Mode */}
-      <div className="grid grid-cols-5 gap-2 p-3 bg-white dark:bg-slate-800 rounded-[2.2rem] shadow-xl shadow-slate-200/40 dark:shadow-none border border-white dark:border-slate-700">
+      {/* 2. QUICK MENU - Sekarang 4 Kolom & Icon WA diganti Download (Export) */}
+      <div className="grid grid-cols-4 gap-2 p-3 bg-white dark:bg-slate-800 rounded-[2.2rem] shadow-xl shadow-slate-200/40 dark:shadow-none border border-white dark:border-slate-700">
         {[
           { icon: <Camera size={18}/>, label: "Scan", color: "text-indigo-600", bg: "bg-indigo-50", action: () => setShowScanner(true) },
           { icon: <Scissors size={18}/>, label: "Split", color: "text-rose-600", bg: "bg-rose-50", action: () => setShowSplitModal(true) },
           { icon: <PieChartIcon size={18}/>, label: "Insight", color: "text-teal-600", bg: "bg-teal-50", action: () => setShowInsight(true) },
-          { icon: <MessageCircle size={18}/>, label: "WA", color: "text-green-600", bg: "bg-green-50", action: shareWhatsApp },
-          { icon: <FileText size={18}/>, label: "PDF", color: "text-blue-600", bg: "bg-blue-50", action: exportPDF },
+          { icon: <Download size={18}/>, label: "Export", color: "text-blue-600", bg: "bg-blue-50", action: shareWhatsApp },
         ].map((item, i) => (
           <button key={i} onClick={item.action} className="flex flex-col items-center gap-1.5 group">
-            <div className={`p-3.5 ${item.bg} dark:bg-opacity-10 ${item.color} rounded-2xl group-active:scale-90 transition-all shadow-sm`}>
+            <div className={`p-4 ${item.bg} dark:bg-opacity-10 ${item.color} rounded-2xl group-active:scale-90 transition-all shadow-sm`}>
               {item.icon}
             </div>
             <span className="text-[7px] font-black uppercase text-slate-400 dark:text-slate-500">{item.label}</span>
@@ -68,7 +68,7 @@ const HomePage = ({
         ))}
       </div>
 
-      {/* 3. BUDGET PROGRESS - Background lebih solid & Shadow lebih dalam agar terpisah dari bg aplikasi */}
+      {/* 3. BUDGET TRACKING */}
       <div className="space-y-4">
         <div className="flex justify-between items-center px-2">
           <h3 className="text-[10px] font-black italic uppercase tracking-widest text-slate-400 dark:text-slate-500">Budget Tracking</h3>
@@ -95,7 +95,6 @@ const HomePage = ({
                     <span className="text-[9px] font-black text-slate-300 block italic">of Rp {formatRupiah(c.limit)}</span>
                   </div>
                 </div>
-                {/* Progress Bar Background dibuat lebih gelap di light mode agar terlihat jalurnya */}
                 <div className="w-full h-3 bg-slate-100 dark:bg-slate-700/50 rounded-full overflow-hidden p-[2px] border border-slate-50 dark:border-slate-700">
                   <div 
                     className={`h-full rounded-full transition-all duration-1000 ease-out ${isOver ? 'bg-gradient-to-r from-rose-500 to-rose-400' : 'bg-gradient-to-r from-emerald-500 to-emerald-400'}`} 
@@ -122,7 +121,10 @@ const HomePage = ({
             setHistoryFilter={setHistoryFilter} 
             showBalance={showBalance} 
             formatRupiah={formatRupiah} 
-            t={t} 
+            t={t}
+            selectedDate={selectedDate}
+            setSelectedDate={setSelectedDate}
+            handleDeleteTransaction={handleDeleteTransaction}
           />
         </div>
       </div>
