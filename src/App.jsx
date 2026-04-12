@@ -4,7 +4,7 @@ import { onAuthStateChanged } from "firebase/auth";
 import { collection, addDoc, onSnapshot, query, where, orderBy, deleteDoc, doc, updateDoc } from "firebase/firestore";
 import { 
   Home as HomeIcon, Wallet as WalletIcon, User as UserIcon, Tag as TagIcon, Plus, Bell, Sun, Moon, BarChart3, X, Info, Sparkles, Loader2, Camera, Delete, ShieldCheck,
-  RefreshCcw 
+  RefreshCcw, Mic 
 } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -29,12 +29,12 @@ import NotificationModal from "./components/modals/NotificationModal";
 import SecurityLock from "./components/SecurityLock";
 
 function App() {
-  // --- 1. SECURITY & AUTH STATES (RESTORED) ---
+  // --- 1. SECURITY & AUTH STATES ---
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [isLocked, setIsLocked] = useState(true); 
 
-  // --- 2. UI & DATA STATES (COMPLETE) ---
+  // --- 2. UI & DATA STATES ---
   const [activeTab, setActiveTab] = useState("home");
   const [lang, setLang] = useState(() => localStorage.getItem("fin_lang") || "id");
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem("fin_dark") === "true");
@@ -65,7 +65,7 @@ function App() {
 
   const t = TRANSLATIONS[lang];
 
-  // Helper UI (RE-ADDED)
+  // Helper UI
   const getDynamicFontSize = (length) => {
     if (length > 15) return "text-2xl";
     if (length > 12) return "text-3xl";
@@ -78,7 +78,43 @@ function App() {
     setTimeout(() => setToast(p => ({ ...p, show: false })), 3000);
   };
 
-  // --- 3. LISTENERS & EFFECTS (FULL RESTORED) ---
+  // --- 3. REVOLUTIONARY VOICE FEATURE (FIXED COLLISION) ---
+  const startVoiceCommand = () => {
+    setShowAddTransaction(false);
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      showNotice("Browser lo nggak support Voice!", "error");
+      return;
+    }
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'id-ID';
+    recognition.interimResults = false;
+    showNotice("Mendengarkan...", "success");
+    recognition.onresult = (event) => {
+      const transcript = event.results[0][0].transcript.toLowerCase();
+      parseVoiceData(transcript);
+    };
+    recognition.onerror = () => showNotice("Gagal denger suara!", "error");
+    recognition.start();
+  };
+
+  const parseVoiceData = (text) => {
+    const amountClean = text.replace(/ribu/g, "000").replace(/\D/g, "");
+    const detectedAmount = amountClean || "";
+    const detectedWallet = wallets.find(w => text.includes(w.name.toLowerCase()));
+    const detectedCategory = categories.find(c => text.includes(c.name.toLowerCase()));
+    setForm({
+      ...form,
+      amount: detectedAmount,
+      walletId: detectedWallet ? detectedWallet.id : (wallets[0]?.id || ""),
+      category: detectedCategory ? detectedCategory.name : (categories[0]?.name || "Lainnya"),
+      note: `AI Voice: "${text}"`
+    });
+    setShowAddTransaction(true);
+    showNotice("Data diproses otomatis!", "success");
+  };
+
+  // --- 4. LISTENERS & EFFECTS ---
   useEffect(() => {
     const unsubAuth = onAuthStateChanged(auth, (u) => { 
         setUser(u); 
@@ -104,7 +140,7 @@ function App() {
     else document.documentElement.classList.remove('dark');
   }, [lang, darkMode]);
 
-  // --- 4. DATA LOGIC ---
+  // --- 5. DATA LOGIC ---
   const stats = useMemo(() => {
     const baseBalance = wallets.reduce((acc, w) => acc + (Number(w.balance) || 0), 0);
     const inc = allTransactions.filter(tr => tr.type === 'income').reduce((a, b) => a + (Number(b.amount) || 0), 0);
@@ -112,7 +148,7 @@ function App() {
     return { income: inc, expense: exp, balance: baseBalance + inc - exp };
   }, [allTransactions, wallets]);
 
-  // --- 5. HANDLERS (FULL RESTORED) ---
+  // --- 6. HANDLERS WITH STRICT VALIDATION ---
   const handleNumpad = (val, target) => {
     const setters = { form: setForm, cat: setNewCat, wallet: setNewWallet }; 
     const setter = setters[target];
@@ -125,16 +161,33 @@ function App() {
   };
 
   const handleSaveTransaction = async () => {
-    if (!form.amount || !form.category || !form.walletId) return showNotice("Data incomplete!", "error");
-    await addDoc(collection(db, "transactions"), { ...form, type: form.type.toLowerCase(), amount: Number(form.amount), userId: user.uid, createdAt: new Date() });
+    if (!form.amount || !form.category || !form.walletId) {
+        return showNotice("Data tidak boleh kosong!", "error");
+    }
+    await addDoc(collection(db, "transactions"), { 
+        ...form, 
+        type: form.type.toLowerCase(), 
+        amount: Number(form.amount), 
+        userId: user.uid, 
+        createdAt: new Date() 
+    });
     setShowAddTransaction(false); 
     setForm({ amount: "", category: "", type: "expense", walletId: "", note: "" });
     showNotice("Tersimpan!");
   };
 
   const handleSaveWallet = async (walletData) => {
-    if (!walletData.name) return showNotice("Isi nama wallet!", "error");
-    const payload = { name: walletData.name, type: walletData.type, balance: Number(walletData.balance || 0), userId: user.uid, updatedAt: new Date() };
+    // Validasi Name dan Balance agar tidak NaN
+    if (!walletData.name || walletData.balance === "") {
+        return showNotice("Data tidak boleh kosong!", "error");
+    }
+    const payload = { 
+        name: walletData.name, 
+        type: walletData.type, 
+        balance: Number(walletData.balance || 0), 
+        userId: user.uid, 
+        updatedAt: new Date() 
+    };
     try {
       if (walletData.id) {
         await updateDoc(doc(db, "wallets", walletData.id), payload);
@@ -147,51 +200,56 @@ function App() {
     } catch (err) { showNotice("Gagal menyimpan", "error"); }
   };
 
-  // --- 6. POWERFULL PDF LOGIC (FIXED) ---
+  const handleSaveSub = async () => {
+    if (!newSub.name || !newSub.price || !newSub.dueDay) {
+        return showNotice("Data tidak boleh kosong!", "error");
+    }
+    try {
+        await addDoc(collection(db, "subscriptions"), { 
+            ...newSub, 
+            price: Number(newSub.price),
+            userId: user.uid, 
+            createdAt: new Date() 
+        });
+        setShowAddSub(false);
+        setNewSub({ name: "", price: "", dueDay: "" });
+        showNotice("Berhasil ditambahkan!");
+    } catch (err) {
+        showNotice("Gagal menyimpan", "error");
+    }
+  };
+
   const shareWhatsApp = async () => {
     try {
         const docPDF = new jsPDF();
         const fileName = `Laporan_Keuangan_${new Date().getTime()}.pdf`;
-        
-        // Header Dark Style
         docPDF.setFillColor(15, 23, 42); 
         docPDF.rect(0, 0, 210, 50, 'F');
         docPDF.setTextColor(255, 255, 255);
         docPDF.setFontSize(22);
         docPDF.setFont("helvetica", "bold");
         docPDF.text("FINANSIALKU REPORT", 15, 30);
-        
         docPDF.setFontSize(10);
         docPDF.text(`Laporan Ringkasan - ${new Date().toLocaleString()}`, 15, 40);
-
-        // Body Content
         docPDF.setTextColor(15, 23, 42);
-        docPDF.setFontSize(14);
-        docPDF.text("RINGKASAN SALDO", 15, 65);
-        docPDF.setFontSize(12);
-        docPDF.text(`Total Balance: Rp ${formatRupiah(stats.balance)}`, 15, 75);
-
-        const walletData = wallets.map(w => {
+        const walletDataPDF = wallets.map(w => {
             const inc = allTransactions.filter(tr => tr.walletId === w.id && tr.type === 'income').reduce((a, b) => a + Number(b.amount || 0), 0);
             const exp = allTransactions.filter(tr => tr.walletId === w.id && tr.type === 'expense').reduce((a, b) => a + Number(b.amount || 0), 0);
             return [w.name.toUpperCase(), w.type.toUpperCase(), `Rp ${formatRupiah(Number(w.balance || 0) + inc - exp)}` ];
         });
-
         autoTable(docPDF, {
             startY: 85,
             head: [['NAMA DOMPET', 'TIPE', 'SALDO AKHIR']],
-            body: walletData,
+            body: walletDataPDF,
             theme: 'grid',
             headStyles: { fillColor: [37, 99, 235] }
         });
-
         const transData = allTransactions.slice(0, 25).map(tr => [
             tr.createdAt?.seconds ? new Date(tr.createdAt.seconds * 1000).toLocaleDateString() : '-',
             tr.category.toUpperCase(),
             tr.type.toUpperCase(),
             `Rp ${formatRupiah(tr.amount)}`
         ]);
-
         autoTable(docPDF, {
             startY: docPDF.lastAutoTable.finalY + 15,
             head: [['TANGGAL', 'KATEGORI', 'TIPE', 'NOMINAL']],
@@ -199,12 +257,9 @@ function App() {
             theme: 'striped',
             headStyles: { fillColor: [15, 23, 42] }
         });
-
         docPDF.save(fileName);
         showNotice("PDF Berhasil diunduh!");
-    } catch (err) {
-        showNotice("Gagal membuat PDF", "error");
-    }
+    } catch (err) { showNotice("Gagal membuat PDF", "error"); }
   };
 
   // --- 7. RENDER ---
@@ -213,10 +268,10 @@ function App() {
   if (isLocked) return <SecurityLock onUnlock={() => setIsLocked(false)} />;
 
   return (
-    <div className={`min-h-screen flex flex-col max-w-md mx-auto transition-all ${darkMode ? 'bg-slate-900 text-white' : 'bg-[#F8F9FE] text-slate-900'}`}>
+    <div className={`min-h-screen flex flex-col max-w-md mx-auto transition-all ${darkMode ? 'bg-[#0F172A] text-white' : 'bg-[#F8F9FE] text-slate-900'}`}>
       
       {activeTab !== "profile" && (
-        <div className="fixed top-0 left-0 right-0 max-w-md mx-auto z-50 px-6 pt-12 pb-4 flex justify-between items-center bg-inherit border-b border-transparent dark:border-white/5">
+        <div className="fixed top-0 left-0 right-0 max-w-md mx-auto z-50 px-6 pt-12 pb-4 flex justify-between items-center bg-inherit">
           <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-2xl bg-blue-600 flex items-center justify-center text-white shadow-lg shadow-blue-600/20"><BarChart3 size={20}/></div>
               <h1 className="text-xl font-black tracking-tighter italic">FINANSIALKU.</h1>
@@ -228,51 +283,43 @@ function App() {
         </div>
       )}
 
-      <div className={`flex-1 overflow-y-auto no-scrollbar pb-32 ${activeTab === "home" ? "px-6" : ""} ${activeTab !== "profile" ? "pt-28" : ""}`}>
+      <div className={`flex-1 overflow-y-auto no-scrollbar pb-40 ${activeTab === "home" ? "px-6" : ""} ${activeTab !== "profile" ? "pt-28" : ""}`}>
         {activeTab === "home" && <HomePage stats={stats} t={t} formatRupiah={formatRupiah} showBalance={showBalance} setShowBalance={setShowBalance} setShowScanner={setShowScanner} setShowSplitModal={setShowSplitModal} setShowInsight={setShowInsight} categories={categories} allTransactions={allTransactions} historyFilter={historyFilter} setHistoryFilter={setHistoryFilter} setShowNotif={setShowNotif} shareWhatsApp={shareWhatsApp} selectedDate={selectedDate} setSelectedDate={setSelectedDate} handleDeleteTransaction={async (id) => { if(window.confirm("Hapus?")) { await deleteDoc(doc(db, "transactions", id)); showNotice("Dihapus!"); } }} />}
-        
-        {activeTab === "wallet" && (
-          <WalletPage 
-            wallets={wallets} 
-            allTransactions={allTransactions} 
-            formatRupiah={formatRupiah} 
-            showAddWallet={showAddWallet}
-            setShowAddWallet={setShowAddWallet} 
-            handleDeleteWallet={async (id) => { if(window.confirm("Hapus?")) { await deleteDoc(doc(db, "wallets", id)); showNotice("Dihapus!"); } }} 
-            handleEditWallet={(w) => { setEditingWalletId(w.id); setShowAddWallet(true); }}
-            onAddWallet={handleSaveWallet}
-            onUpdateWallet={handleSaveWallet}
-            editingWallet={wallets.find(w => w.id === editingWalletId)}
-            setEditingWallet={(val) => setEditingWalletId(val?.id || null)}
-          />
-        )}
-        
+        {activeTab === "wallet" && <WalletPage wallets={wallets} allTransactions={allTransactions} formatRupiah={formatRupiah} showAddWallet={showAddWallet} setShowAddWallet={setShowAddWallet} handleDeleteWallet={async (id) => { if(window.confirm("Hapus?")) { await deleteDoc(doc(db, "wallets", id)); showNotice("Dihapus!"); } }} handleEditWallet={(w) => { setEditingWalletId(w.id); setShowAddWallet(true); }} onAddWallet={handleSaveWallet} onUpdateWallet={handleSaveWallet} editingWallet={wallets.find(w => w.id === editingWalletId)} setEditingWallet={(val) => setEditingWalletId(val?.id || null)} />}
         {activeTab === "category" && <CategoryPage categories={categories} allTransactions={allTransactions} formatRupiah={formatRupiah} setShowAddCategory={setShowAddCategory} t={t} handleDeleteCategory={async (id) => { if(window.confirm("Hapus?")) { await deleteDoc(doc(db, "categories", id)); showNotice("Dihapus!"); } }} />}
         {activeTab === "recurring" && <SubscriptionPage subs={subscriptions} formatRupiah={formatRupiah} setShowAddSub={setShowAddSub} handleDeleteSub={async (id) => { if(window.confirm("Hapus?")) { await deleteDoc(doc(db, "subscriptions", id)); showNotice("Dihapus!"); } }} />}
         {activeTab === "profile" && <ProfilePage user={user} t={t} lang={lang} setLang={setLang} darkMode={darkMode} setDarkMode={setDarkMode} setActiveTab={setActiveTab} shareWhatsApp={shareWhatsApp} />}
       </div>
 
-      <div className="fixed bottom-8 left-6 right-6 z-[100]">
-          <div className="bg-white dark:bg-slate-800 h-20 rounded-[2.5rem] shadow-2xl border border-slate-200 dark:border-slate-700 flex items-center justify-around px-4">
-                <button onClick={() => setActiveTab('home')} className={`p-4 rounded-2xl transition-all ${activeTab === 'home' ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/40' : 'text-slate-300'}`}><HomeIcon size={24}/></button>
-                <button onClick={() => setActiveTab('category')} className={`p-4 rounded-2xl transition-all ${activeTab === 'category' ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/40' : 'text-slate-300'}`}><TagIcon size={24}/></button>
-                <button onClick={() => setShowAddTransaction(true)} className="w-14 h-14 bg-slate-950 dark:bg-blue-600 rounded-full flex items-center justify-center text-white shadow-xl -mt-12 border-4 border-[#F8F9FE] dark:border-slate-900 active:scale-95 transition-all"><Plus size={32}/></button>
-                <button onClick={() => setActiveTab('recurring')} className={`p-4 rounded-2xl transition-all ${activeTab === 'recurring' ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/40' : 'text-slate-300'}`}><RefreshCcw size={24}/></button>
-                <button onClick={() => setActiveTab('wallet')} className={`p-4 rounded-2xl transition-all ${activeTab === 'wallet' ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/40' : 'text-slate-300'}`}><WalletIcon size={24}/></button>
+      <div className="fixed bottom-10 left-6 right-6 z-[110]">
+          <div className="bg-white/90 dark:bg-slate-900/90 backdrop-blur-2xl h-16 rounded-[2.5rem] shadow-2xl border border-slate-200/50 dark:border-white/10 flex items-center justify-between px-8 relative">
+                <div className="flex items-center gap-8">
+                  <button onClick={() => setActiveTab('home')} className={`transition-all ${activeTab === 'home' ? 'text-blue-500 scale-110' : 'text-slate-400 opacity-40'}`}><HomeIcon size={20}/></button>
+                  <button onClick={() => setActiveTab('wallet')} className={`transition-all ${activeTab === 'wallet' ? 'text-blue-500 scale-110' : 'text-slate-400 opacity-40'}`}><WalletIcon size={20}/></button>
+                </div>
+                <div className="absolute left-1/2 -translate-x-1/2 -top-10 flex items-center gap-3">
+                    <button onClick={startVoiceCommand} className="w-12 h-12 bg-white dark:bg-slate-800 rounded-full flex items-center justify-center text-blue-500 shadow-xl border-4 border-[#F8F9FE] dark:border-[#0F172A] active:scale-90 transition-all">
+                      <div className="relative"><Mic size={18}/><span className="absolute -top-1 -right-1 flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span><span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span></span></div>
+                    </button>
+                    <button onClick={() => setShowAddTransaction(true)} className="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center text-white shadow-2xl shadow-blue-600/40 border-4 border-[#F8F9FE] dark:border-[#0F172A] active:scale-95 transition-all"><Plus size={32}/></button>
+                </div>
+                <div className="flex items-center gap-8">
+                  <button onClick={() => setActiveTab('recurring')} className={`transition-all ${activeTab === 'recurring' ? 'text-blue-500 scale-110' : 'text-slate-400 opacity-40'}`}><RefreshCcw size={20}/></button>
+                  <button onClick={() => setActiveTab('category')} className={`transition-all ${activeTab === 'category' ? 'text-blue-500 scale-110' : 'text-slate-400 opacity-40'}`}><TagIcon size={20}/></button>
+                </div>
           </div>
       </div>
 
-      {/* MODALS SECTION */}
       <NotificationModal show={showNotif} setShow={setShowNotif} notifications={allTransactions.slice(0,3)} formatRupiah={formatRupiah} />
       <ScannerModal show={showScanner} setShow={setShowScanner} setForm={setForm} setShowAddTransaction={setShowAddTransaction} showNotice={showNotice} />
-      <SplitBillModal show={showSplitModal} setShow={setShowSplitModal} darkMode={darkMode} formatRupiah={formatRupiah} />
+      <SplitBillModal show={showSplitModal} setShow={setShowSplitModal} formatRupiah={formatRupiah} showNotice={showNotice} />
       <InsightModal show={showInsight} setShow={setShowInsight} categories={categories} allTransactions={allTransactions} stats={stats} formatRupiah={formatRupiah} />
       <AddTransactionModal show={showAddTransaction} setShow={setShowAddTransaction} form={form} setForm={setForm} categories={categories} wallets={wallets} handleSave={handleSaveTransaction} formatRupiah={formatRupiah} t={t} getDynamicFontSize={getDynamicFontSize} />
-      <AddCategoryModal show={showAddCategory} setShow={setShowAddCategory} newCat={newCat} setNewCat={setNewCat} handleNumpad={handleNumpad} handleSave={async () => { await addDoc(collection(db, "categories"), { ...newCat, limit: Number(newCat.limit), userId: user.uid, createdAt: new Date() }); setShowAddCategory(false); setNewCat({name:"", limit:""}); showNotice("Ditambahkan!"); }} formatRupiah={formatRupiah} t={t} getDynamicFontSize={getDynamicFontSize} />
-      <AddSubModal show={showAddSub} setShow={setShowAddSub} newSub={newSub} setNewSub={setNewSub} handleSave={async () => { await addDoc(collection(db, "subscriptions"), { ...newSub, userId: user.uid, createdAt: new Date() }); setShowAddSub(false); setNewSub({ name: "", price: "", dueDay: "" }); showNotice("Berhasil!"); }} formatRupiah={formatRupiah} />
+      <AddCategoryModal show={showAddCategory} setShow={setShowAddCategory} newCat={newCat} setNewCat={setNewCat} handleNumpad={handleNumpad} handleSave={async () => { if(!newCat.name || !newCat.limit) return showNotice("Data tidak boleh kosong!", "error"); await addDoc(collection(db, "categories"), { ...newCat, limit: Number(newCat.limit), userId: user.uid, createdAt: new Date() }); setShowAddCategory(false); setNewCat({name:"", limit:""}); showNotice("Ditambahkan!"); }} formatRupiah={formatRupiah} t={t} getDynamicFontSize={getDynamicFontSize} />
+      <AddSubModal show={showAddSub} setShow={setShowAddSub} newSub={newSub} setNewSub={setNewSub} handleSave={handleSaveSub} formatRupiah={formatRupiah} />
 
       {toast.show && (
-          <div className="fixed top-12 left-6 right-6 z-[9999] animate-in slide-in-from-top">
+          <div className="fixed top-12 left-6 right-6 z-[99999] animate-in slide-in-from-top">
               <div className={`p-5 rounded-[2.5rem] shadow-2xl flex items-center gap-4 border backdrop-blur-xl ${toast.type === 'success' ? 'bg-green-500/90 border-green-400' : 'bg-red-500/90 border-red-400'} text-white`}>
                   <ShieldCheck size={24}/> <p className="text-[11px] font-black uppercase tracking-tight">{toast.msg}</p>
               </div>
