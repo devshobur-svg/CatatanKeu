@@ -1,7 +1,7 @@
 import React from "react";
 import { 
   PieChart as PieChartIcon, Eye, EyeOff, Camera, Scissors, 
-  Download, BarChart3 // FileText & MessageCircle dihapus, Download ditambahkan
+  Download, BarChart3, Calendar as CalendarIcon
 } from "lucide-react"; 
 import HistorySection from "../components/HistorySection";
 
@@ -9,7 +9,7 @@ const HomePage = ({
   stats, t, formatRupiah, showBalance, setShowBalance, 
   setShowScanner, setShowSplitModal, setShowInsight, 
   categories, allTransactions, historyFilter, setHistoryFilter,
-  shareWhatsApp, setShowNotif, // exportPDF dihapus dari props
+  shareWhatsApp, setShowNotif,
   selectedDate, setSelectedDate, 
   handleDeleteTransaction 
 }) => {
@@ -23,7 +23,7 @@ const HomePage = ({
   return (
     <div className="space-y-10 animate-in fade-in duration-500 pb-32 px-1">
       
-      {/* 1. CARD SALDO */}
+      {/* 1. CARD SALDO - Tetap Stable */}
       <div className="bg-gradient-to-br from-blue-600 to-blue-700 dark:from-blue-700 dark:to-slate-900 rounded-[2.5rem] p-8 text-white shadow-2xl shadow-blue-200 dark:shadow-none relative overflow-hidden">
         <div className="absolute top-0 right-0 w-40 h-40 bg-white/10 rounded-full -mr-20 -mt-20 blur-3xl"></div>
         <div className="relative z-10 text-center">
@@ -32,7 +32,10 @@ const HomePage = ({
             <h2 className={`${getBalanceFontSize(formatRupiah(stats.balance).length)} font-black tracking-tighter italic`}>
               {showBalance ? `Rp ${formatRupiah(stats.balance)}` : "Rp ••••••"}
             </h2>
-            <button onClick={() => setShowBalance(!showBalance)} className="bg-white/20 px-5 py-1.5 rounded-full active:scale-90 transition-all flex items-center gap-2 border border-white/10 backdrop-blur-md">
+            <button 
+              onClick={() => setShowBalance(!showBalance)} 
+              className="bg-white/20 px-5 py-1.5 rounded-full active:scale-90 transition-all flex items-center gap-2 border border-white/10 backdrop-blur-md"
+            >
               <span className="text-[8px] font-black uppercase tracking-widest">{showBalance ? 'Hide' : 'Show'}</span>
               {showBalance ? <EyeOff size={12}/> : <Eye size={12}/>}
             </button>
@@ -51,7 +54,7 @@ const HomePage = ({
         </div>
       </div>
 
-      {/* 2. QUICK MENU - Sekarang 4 Kolom & Icon WA diganti Download (Export) */}
+      {/* 2. QUICK MENU - 4 Columns */}
       <div className="grid grid-cols-4 gap-2 p-3 bg-white dark:bg-slate-800 rounded-[2.2rem] shadow-xl shadow-slate-200/40 dark:shadow-none border border-white dark:border-slate-700">
         {[
           { icon: <Camera size={18}/>, label: "Scan", color: "text-indigo-600", bg: "bg-indigo-50", action: () => setShowScanner(true) },
@@ -68,7 +71,7 @@ const HomePage = ({
         ))}
       </div>
 
-      {/* 3. BUDGET TRACKING */}
+      {/* 3. BUDGET TRACKING - Tetap Stable */}
       <div className="space-y-4">
         <div className="flex justify-between items-center px-2">
           <h3 className="text-[10px] font-black italic uppercase tracking-widest text-slate-400 dark:text-slate-500">Budget Tracking</h3>
@@ -111,15 +114,32 @@ const HomePage = ({
         </div>
       </div>
 
-      {/* 4. HISTORY */}
-      <div className="space-y-4 pb-4">
-        <h3 className="text-[10px] font-black italic uppercase tracking-widest text-slate-400 px-2">{t.history}</h3>
+      {/* 4. IMPROVED HISTORY SECTION */}
+      <div className="space-y-6 pb-4">
+        <div className="flex justify-between items-center px-2">
+          <h3 className="text-[10px] font-black italic uppercase tracking-widest text-slate-400">{t.history}</h3>
+          
+          {/* Unified Date Picker Shortcut */}
+          <div className="flex items-center gap-2 bg-white dark:bg-slate-800 px-3 py-1.5 rounded-full border border-slate-100 dark:border-slate-700 shadow-sm">
+            <CalendarIcon size={12} className="text-blue-500" />
+            <input 
+              type="date" 
+              value={selectedDate} 
+              onChange={(e) => setSelectedDate(e.target.value)}
+              className="bg-transparent text-[9px] font-black uppercase outline-none text-slate-600 dark:text-slate-300 border-none p-0 cursor-pointer"
+            />
+            {selectedDate && (
+              <button onClick={() => setSelectedDate("")} className="text-rose-500 text-[9px] font-black ml-1">X</button>
+            )}
+          </div>
+        </div>
+
         <div className="bg-white dark:bg-slate-800/40 rounded-[2.5rem] p-1 border border-white dark:border-slate-700/50 shadow-lg shadow-slate-100 dark:shadow-none">
           <HistorySection 
             allTransactions={allTransactions} 
             historyFilter={historyFilter} 
             setHistoryFilter={setHistoryFilter} 
-            showBalance={showBalance} 
+            showBalance={showBalance} // Untuk fitur Sensor Hide/Unhide
             formatRupiah={formatRupiah} 
             t={t}
             selectedDate={selectedDate}

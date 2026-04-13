@@ -14,7 +14,7 @@ import Login from "./pages/Login";
 import HomePage from "./pages/Home";
 import WalletPage from "./pages/Wallet";
 import CategoryPage from "./pages/Category";
-import ProfilePage from "./pages/Profile";
+import ProfilePage from "./pages/ProfilePage"; 
 import SubscriptionPage from "./pages/Subscription"; 
 import { TRANSLATIONS, formatRupiah } from "./utils/constants";
 
@@ -26,6 +26,7 @@ import AddTransactionModal from "./components/modals/AddTransactionModal";
 import AddCategoryModal from "./components/modals/AddCategoryModal";
 import AddSubModal from "./components/modals/AddSubModal"; 
 import NotificationModal from "./components/modals/NotificationModal";
+import ExportModal from "./components/modals/ExportModal"; 
 import SecurityLock from "./components/SecurityLock";
 
 function App() {
@@ -41,6 +42,8 @@ function App() {
   const [historyFilter, setHistoryFilter] = useState("all"); 
   const [selectedDate, setSelectedDate] = useState(""); 
   
+  const [userAvatar, setUserAvatar] = useState(() => localStorage.getItem("fin_avatar") || "👤");
+  
   const [wallets, setWallets] = useState([]);
   const [categories, setCategories] = useState([]);
   const [allTransactions, setAllTransactions] = useState([]); 
@@ -55,6 +58,7 @@ function App() {
   const [showAddCategory, setShowAddCategory] = useState(false);
   const [showAddSub, setShowAddSub] = useState(false); 
   const [showNotif, setShowNotif] = useState(false);
+  const [showExportModal, setShowExportModal] = useState(false); 
 
   const [form, setForm] = useState({ amount: "", category: "", type: "expense", walletId: "", note: "" });
   const [newWallet, setNewWallet] = useState({ name: "", type: "bank", balance: "" });
@@ -78,7 +82,7 @@ function App() {
     setTimeout(() => setToast(p => ({ ...p, show: false })), 3000);
   };
 
-  // --- 3. REVOLUTIONARY VOICE FEATURE (FIXED COLLISION) ---
+  // --- 3. VOICE FEATURE ---
   const startVoiceCommand = () => {
     setShowAddTransaction(false);
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -148,7 +152,7 @@ function App() {
     return { income: inc, expense: exp, balance: baseBalance + inc - exp };
   }, [allTransactions, wallets]);
 
-  // --- 6. HANDLERS WITH STRICT VALIDATION ---
+  // --- 6. HANDLERS ---
   const handleNumpad = (val, target) => {
     const setters = { form: setForm, cat: setNewCat, wallet: setNewWallet }; 
     const setter = setters[target];
@@ -162,7 +166,7 @@ function App() {
 
   const handleSaveTransaction = async () => {
     if (!form.amount || !form.category || !form.walletId) {
-        return showNotice("Data tidak boleh kosong!", "error");
+        return showNotice("Lengkapi data dulu, bro!", "error");
     }
     await addDoc(collection(db, "transactions"), { 
         ...form, 
@@ -177,9 +181,8 @@ function App() {
   };
 
   const handleSaveWallet = async (walletData) => {
-    // Validasi Name dan Balance agar tidak NaN
     if (!walletData.name || walletData.balance === "") {
-        return showNotice("Data tidak boleh kosong!", "error");
+        return showNotice("Lengkapi data dulu, bro!", "error");
     }
     const payload = { 
         name: walletData.name, 
@@ -202,7 +205,7 @@ function App() {
 
   const handleSaveSub = async () => {
     if (!newSub.name || !newSub.price || !newSub.dueDay) {
-        return showNotice("Data tidak boleh kosong!", "error");
+        return showNotice("Lengkapi data dulu, bro!", "error");
     }
     try {
         await addDoc(collection(db, "subscriptions"), { 
@@ -214,55 +217,105 @@ function App() {
         setShowAddSub(false);
         setNewSub({ name: "", price: "", dueDay: "" });
         showNotice("Berhasil ditambahkan!");
-    } catch (err) {
-        showNotice("Gagal menyimpan", "error");
+    } catch (err) { showNotice("Gagal menyimpan", "error"); }
+  };
+
+  // --- 🌟 EXEKUSI POIN 1: IMPROVED MAESTRO PDF REPORT ---
+  const handleExportPDF = (filters) => {
+    try {
+      const docPDF = new jsPDF();
+      const fileName = `Report_Maestro_${new Date().getTime()}.pdf`;
+      
+      const reportData = allTransactions.filter(tr => {
+        const dateObj = tr.createdAt?.seconds ? new Date(tr.createdAt.seconds * 1000) : new Date(tr.createdAt);
+        const trDate = dateObj.toISOString().split('T')[0];
+        const matchWallet = filters.walletId === 'all' || tr.walletId === filters.walletId;
+        const matchCat = filters.category === 'all' || tr.category === filters.category;
+        const matchStart = !filters.startDate || trDate >= filters.startDate;
+        const matchEnd = !filters.endDate || trDate <= filters.endDate;
+        return matchWallet && matchCat && matchStart && matchEnd;
+      });
+
+      if (reportData.length === 0) return showNotice("Data tidak ditemukan!", "error");
+
+      // 1. HEADER BRANDING
+      docPDF.setFillColor(15, 23, 42); docPDF.rect(0, 0, 210, 50, 'F');
+      docPDF.setTextColor(255, 255, 255);
+      docPDF.setFontSize(24); docPDF.setFont("helvetica", "bold");
+      docPDF.text("FINANSIALKU MAESTRO", 15, 28);
+      docPDF.setFontSize(9); docPDF.setFont("helvetica", "normal");
+      docPDF.text(`Periode: ${filters.startDate || 'Awal'} s/d ${filters.endDate || 'Sekarang'}`, 15, 38);
+      docPDF.text(`Generated by ${user?.displayName || 'Master'}`, 15, 43);
+
+      // 2. THE WEALTH SUMMARY HEADER (IDE KREATIF 1)
+      const reportInc = reportData.filter(t => t.type === 'income').reduce((a, b) => a + Number(b.amount), 0);
+      const reportExp = reportData.filter(t => t.type === 'expense').reduce((a, b) => a + Number(b.amount), 0);
+      const savingsRate = reportInc > 0 ? Math.round(((reportInc - reportExp) / reportInc) * 100) : 0;
+
+      // Draw Summary Boxes
+      docPDF.setFillColor(241, 245, 249); docPDF.roundedRect(15, 55, 180, 25, 3, 3, 'F');
+      
+      docPDF.setTextColor(51, 65, 85); docPDF.setFontSize(8); docPDF.setFont("helvetica", "bold");
+      docPDF.text("TOTAL INCOME", 25, 63);
+      docPDF.text("TOTAL EXPENSE", 85, 63);
+      docPDF.text("SAVINGS RATE", 145, 63);
+
+      docPDF.setFontSize(11); docPDF.setTextColor(37, 99, 235);
+      docPDF.text(`Rp ${formatRupiah(reportInc)}`, 25, 72);
+      docPDF.setTextColor(225, 29, 72);
+      docPDF.text(`Rp ${formatRupiah(reportExp)}`, 85, 72);
+      docPDF.setTextColor(5, 150, 105);
+      docPDF.text(`${savingsRate}%`, 145, 72);
+
+      // 3. TRANSACTION TABLE
+      const tableBody = reportData.map(tr => [
+        tr.createdAt?.seconds ? new Date(tr.createdAt.seconds * 1000).toLocaleDateString('id-ID') : '-',
+        tr.category.toUpperCase(),
+        tr.note ? tr.note.replace("AI Voice: ", "").replace("Voice: ", "").substring(0, 40) : "-",
+        { 
+          content: `${tr.type === 'income' ? '+' : '-'} Rp ${formatRupiah(tr.amount)}`,
+          styles: { textColor: tr.type === 'income' ? [5, 150, 105] : [225, 29, 72], fontStyle: 'bold' } 
+        }
+      ]);
+
+      autoTable(docPDF, {
+        startY: 90,
+        head: [['DATE', 'CATEGORY', 'NOTE / DESCRIPTION', 'AMOUNT']],
+        body: tableBody,
+        theme: 'grid',
+        headStyles: { fillColor: [15, 23, 42], fontSize: 9, halign: 'center' },
+        columnStyles: {
+          0: { cellWidth: 25, halign: 'center' },
+          1: { cellWidth: 35 },
+          2: { cellWidth: 'auto' },
+          3: { cellWidth: 40, halign: 'right' }
+        },
+        styles: { fontSize: 8, cellPadding: 4, valign: 'middle' },
+        didParseCell: function (data) {
+          if (data.section === 'body' && data.column.index === 3) {
+            data.cell.styles.fontStyle = 'bold';
+          }
+        }
+      });
+
+      // FOOTER LOGO/TEXT
+      const pageCount = docPDF.internal.getNumberOfPages();
+      for (let i = 1; i <= pageCount; i++) {
+        docPDF.setPage(i);
+        docPDF.setFontSize(8); docPDF.setTextColor(148, 163, 184);
+        docPDF.text(`Page ${i} of ${pageCount} - FinansialKu Maestro Official Report`, 105, 290, { align: 'center' });
+      }
+
+      docPDF.save(fileName);
+      setShowExportModal(false);
+      showNotice("Maestro Report Ready!");
+    } catch (err) { 
+      console.error(err);
+      showNotice("Gagal Export", "error"); 
     }
   };
 
-  const shareWhatsApp = async () => {
-    try {
-        const docPDF = new jsPDF();
-        const fileName = `Laporan_Keuangan_${new Date().getTime()}.pdf`;
-        docPDF.setFillColor(15, 23, 42); 
-        docPDF.rect(0, 0, 210, 50, 'F');
-        docPDF.setTextColor(255, 255, 255);
-        docPDF.setFontSize(22);
-        docPDF.setFont("helvetica", "bold");
-        docPDF.text("FINANSIALKU REPORT", 15, 30);
-        docPDF.setFontSize(10);
-        docPDF.text(`Laporan Ringkasan - ${new Date().toLocaleString()}`, 15, 40);
-        docPDF.setTextColor(15, 23, 42);
-        const walletDataPDF = wallets.map(w => {
-            const inc = allTransactions.filter(tr => tr.walletId === w.id && tr.type === 'income').reduce((a, b) => a + Number(b.amount || 0), 0);
-            const exp = allTransactions.filter(tr => tr.walletId === w.id && tr.type === 'expense').reduce((a, b) => a + Number(b.amount || 0), 0);
-            return [w.name.toUpperCase(), w.type.toUpperCase(), `Rp ${formatRupiah(Number(w.balance || 0) + inc - exp)}` ];
-        });
-        autoTable(docPDF, {
-            startY: 85,
-            head: [['NAMA DOMPET', 'TIPE', 'SALDO AKHIR']],
-            body: walletDataPDF,
-            theme: 'grid',
-            headStyles: { fillColor: [37, 99, 235] }
-        });
-        const transData = allTransactions.slice(0, 25).map(tr => [
-            tr.createdAt?.seconds ? new Date(tr.createdAt.seconds * 1000).toLocaleDateString() : '-',
-            tr.category.toUpperCase(),
-            tr.type.toUpperCase(),
-            `Rp ${formatRupiah(tr.amount)}`
-        ]);
-        autoTable(docPDF, {
-            startY: docPDF.lastAutoTable.finalY + 15,
-            head: [['TANGGAL', 'KATEGORI', 'TIPE', 'NOMINAL']],
-            body: transData,
-            theme: 'striped',
-            headStyles: { fillColor: [15, 23, 42] }
-        });
-        docPDF.save(fileName);
-        showNotice("PDF Berhasil diunduh!");
-    } catch (err) { showNotice("Gagal membuat PDF", "error"); }
-  };
-
-  // --- 7. RENDER ---
+  // --- 8. RENDER ---
   if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-900 text-blue-600 font-black text-2xl animate-pulse italic uppercase tracking-tighter">FinansialKu</div>;
   if (!user) return <Login />;
   if (isLocked) return <SecurityLock onUnlock={() => setIsLocked(false)} />;
@@ -273,22 +326,41 @@ function App() {
       {activeTab !== "profile" && (
         <div className="fixed top-0 left-0 right-0 max-w-md mx-auto z-50 px-6 pt-12 pb-4 flex justify-between items-center bg-inherit">
           <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-blue-600 flex items-center justify-center text-white shadow-lg shadow-blue-600/20"><BarChart3 size={20}/></div>
-              <h1 className="text-xl font-black tracking-tighter italic">FINANSIALKU.</h1>
+              <div className="w-10 h-10 rounded-2xl bg-blue-600 flex items-center justify-center text-white shadow-lg"><BarChart3 size={20}/></div>
+              <h1 className="text-xl font-black tracking-tighter italic uppercase">Finansialku.</h1>
           </div>
           <div className="flex items-center gap-2">
-              <button onClick={() => setActiveTab('profile')} className="p-2 bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 active:scale-90 transition-all text-slate-600 dark:text-slate-300"><UserIcon size={20}/></button>
+              <button 
+                onClick={() => setActiveTab('profile')} 
+                className="w-10 h-10 bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 active:scale-90 transition-all flex items-center justify-center text-xl"
+              >
+                {userAvatar}
+              </button>
               <button onClick={() => setDarkMode(!darkMode)} className="p-2 bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 active:scale-90 transition-all">{darkMode ? <Sun size={20} className="text-yellow-400"/> : <Moon size={20} className="text-slate-600"/>}</button>
           </div>
         </div>
       )}
 
       <div className={`flex-1 overflow-y-auto no-scrollbar pb-40 ${activeTab === "home" ? "px-6" : ""} ${activeTab !== "profile" ? "pt-28" : ""}`}>
-        {activeTab === "home" && <HomePage stats={stats} t={t} formatRupiah={formatRupiah} showBalance={showBalance} setShowBalance={setShowBalance} setShowScanner={setShowScanner} setShowSplitModal={setShowSplitModal} setShowInsight={setShowInsight} categories={categories} allTransactions={allTransactions} historyFilter={historyFilter} setHistoryFilter={setHistoryFilter} setShowNotif={setShowNotif} shareWhatsApp={shareWhatsApp} selectedDate={selectedDate} setSelectedDate={setSelectedDate} handleDeleteTransaction={async (id) => { if(window.confirm("Hapus?")) { await deleteDoc(doc(db, "transactions", id)); showNotice("Dihapus!"); } }} />}
+        {activeTab === "home" && <HomePage stats={stats} t={t} formatRupiah={formatRupiah} showBalance={showBalance} setShowBalance={setShowBalance} setShowScanner={setShowScanner} setShowSplitModal={setShowSplitModal} setShowInsight={setShowInsight} categories={categories} allTransactions={allTransactions} historyFilter={historyFilter} setHistoryFilter={setHistoryFilter} setShowNotif={setShowNotif} shareWhatsApp={() => setShowExportModal(true)} selectedDate={selectedDate} setSelectedDate={setSelectedDate} handleDeleteTransaction={async (id) => { if(window.confirm("Hapus?")) { await deleteDoc(doc(db, "transactions", id)); showNotice("Dihapus!"); } }} />}
         {activeTab === "wallet" && <WalletPage wallets={wallets} allTransactions={allTransactions} formatRupiah={formatRupiah} showAddWallet={showAddWallet} setShowAddWallet={setShowAddWallet} handleDeleteWallet={async (id) => { if(window.confirm("Hapus?")) { await deleteDoc(doc(db, "wallets", id)); showNotice("Dihapus!"); } }} handleEditWallet={(w) => { setEditingWalletId(w.id); setShowAddWallet(true); }} onAddWallet={handleSaveWallet} onUpdateWallet={handleSaveWallet} editingWallet={wallets.find(w => w.id === editingWalletId)} setEditingWallet={(val) => setEditingWalletId(val?.id || null)} />}
         {activeTab === "category" && <CategoryPage categories={categories} allTransactions={allTransactions} formatRupiah={formatRupiah} setShowAddCategory={setShowAddCategory} t={t} handleDeleteCategory={async (id) => { if(window.confirm("Hapus?")) { await deleteDoc(doc(db, "categories", id)); showNotice("Dihapus!"); } }} />}
         {activeTab === "recurring" && <SubscriptionPage subs={subscriptions} formatRupiah={formatRupiah} setShowAddSub={setShowAddSub} handleDeleteSub={async (id) => { if(window.confirm("Hapus?")) { await deleteDoc(doc(db, "subscriptions", id)); showNotice("Dihapus!"); } }} />}
-        {activeTab === "profile" && <ProfilePage user={user} t={t} lang={lang} setLang={setLang} darkMode={darkMode} setDarkMode={setDarkMode} setActiveTab={setActiveTab} shareWhatsApp={shareWhatsApp} />}
+        {activeTab === "profile" && (
+          <ProfilePage 
+            user={user} 
+            t={t} 
+            lang={lang} setLang={setLang} 
+            darkMode={darkMode} setDarkMode={setDarkMode} 
+            setActiveTab={setActiveTab} 
+            shareWhatsApp={() => setShowExportModal(true)}
+            currentAvatar={userAvatar} 
+            setUserAvatar={(ava) => { 
+              setUserAvatar(ava);
+              localStorage.setItem("fin_avatar", ava);
+            }}
+          />
+        )}
       </div>
 
       <div className="fixed bottom-10 left-6 right-6 z-[110]">
@@ -314,8 +386,9 @@ function App() {
       <ScannerModal show={showScanner} setShow={setShowScanner} setForm={setForm} setShowAddTransaction={setShowAddTransaction} showNotice={showNotice} />
       <SplitBillModal show={showSplitModal} setShow={setShowSplitModal} formatRupiah={formatRupiah} showNotice={showNotice} />
       <InsightModal show={showInsight} setShow={setShowInsight} categories={categories} allTransactions={allTransactions} stats={stats} formatRupiah={formatRupiah} />
+      <ExportModal show={showExportModal} setShow={setShowExportModal} wallets={wallets} categories={categories} onExport={handleExportPDF} />
       <AddTransactionModal show={showAddTransaction} setShow={setShowAddTransaction} form={form} setForm={setForm} categories={categories} wallets={wallets} handleSave={handleSaveTransaction} formatRupiah={formatRupiah} t={t} getDynamicFontSize={getDynamicFontSize} />
-      <AddCategoryModal show={showAddCategory} setShow={setShowAddCategory} newCat={newCat} setNewCat={setNewCat} handleNumpad={handleNumpad} handleSave={async () => { if(!newCat.name || !newCat.limit) return showNotice("Data tidak boleh kosong!", "error"); await addDoc(collection(db, "categories"), { ...newCat, limit: Number(newCat.limit), userId: user.uid, createdAt: new Date() }); setShowAddCategory(false); setNewCat({name:"", limit:""}); showNotice("Ditambahkan!"); }} formatRupiah={formatRupiah} t={t} getDynamicFontSize={getDynamicFontSize} />
+      <AddCategoryModal show={showAddCategory} setShow={setShowAddCategory} newCat={newCat} setNewCat={setNewCat} handleNumpad={handleNumpad} handleSave={async () => { if(!newCat.name || !newCat.limit) return showNotice("Lengkapi data dulu, bro!", "error"); await addDoc(collection(db, "categories"), { ...newCat, limit: Number(newCat.limit), userId: user.uid, createdAt: new Date() }); setShowAddCategory(false); setNewCat({name:"", limit:""}); showNotice("Ditambahkan!"); }} formatRupiah={formatRupiah} t={t} getDynamicFontSize={getDynamicFontSize} />
       <AddSubModal show={showAddSub} setShow={setShowAddSub} newSub={newSub} setNewSub={setNewSub} handleSave={handleSaveSub} formatRupiah={formatRupiah} />
 
       {toast.show && (
