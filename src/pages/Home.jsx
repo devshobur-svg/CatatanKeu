@@ -11,19 +11,29 @@ const HomePage = ({
   categories, allTransactions, historyFilter, setHistoryFilter,
   shareWhatsApp, setShowNotif,
   selectedDate, setSelectedDate, 
-  handleDeleteTransaction 
+  handleDeleteTransaction,
+  setSelectedTransaction // NEW PROPS: Untuk trigger modal detail
 }) => {
 
-  // LOGIC: Responsive Font Scaling (Lebih Agresif buat HP kecil)
+  // LOGIC: Responsive Font Scaling
   const getBalanceFontSize = (len) => {
     if (!showBalance) return "text-2xl";
-    if (len > 25) return "text-lg"; // Triliunan keatas
+    if (len > 25) return "text-lg"; 
     if (len > 20) return "text-xl";
     if (len > 15) return "text-2xl";
     return "text-3xl";
   };
 
   const sensor = (val) => showBalance ? val : "••••••";
+
+  // HANDLER: Klik In/Out langsung filter & scroll ke history anchor
+  const handleQuickFilter = (type) => {
+    setHistoryFilter(type);
+    const historyEl = document.getElementById('maestro-history-anchor');
+    if (historyEl) {
+      historyEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  };
 
   return (
     <div className="space-y-6 animate-in fade-in duration-700 pb-32 px-1">
@@ -53,9 +63,13 @@ const HomePage = ({
           </div>
           
           <div className="space-y-2.5">
-            <div className="bg-white/5 backdrop-blur-md rounded-[1.5rem] p-4 border border-white/5 flex items-center justify-between gap-3">
+            {/* INTERACTIVE INCOME BOX */}
+            <button 
+              onClick={() => handleQuickFilter('income')}
+              className="w-full bg-white/5 backdrop-blur-md rounded-[1.5rem] p-4 border border-white/5 flex items-center justify-between gap-3 active:scale-95 transition-all hover:bg-white/10 group"
+            >
               <div className="flex items-center gap-2 shrink-0">
-                <div className="p-1.5 bg-emerald-500/20 rounded-xl text-emerald-400"><ArrowDownLeft size={14}/></div>
+                <div className="p-1.5 bg-emerald-500/20 rounded-xl text-emerald-400 group-hover:scale-110 transition-transform"><ArrowDownLeft size={14}/></div>
                 <span className="text-[9px] font-black uppercase tracking-[0.2em] text-white/30 italic">In</span>
               </div>
               <div className="text-right flex-1 min-w-0">
@@ -64,11 +78,15 @@ const HomePage = ({
                   {sensor(formatRupiah(stats.income))}
                 </p>
               </div>
-            </div>
+            </button>
 
-            <div className="bg-white/5 backdrop-blur-md rounded-[1.5rem] p-4 border border-white/5 flex items-center justify-between gap-3">
+            {/* INTERACTIVE EXPENSE BOX */}
+            <button 
+              onClick={() => handleQuickFilter('expense')}
+              className="w-full bg-white/5 backdrop-blur-md rounded-[1.5rem] p-4 border border-white/5 flex items-center justify-between gap-3 active:scale-95 transition-all hover:bg-white/10 group"
+            >
               <div className="flex items-center gap-2 shrink-0">
-                <div className="p-1.5 bg-rose-500/20 rounded-xl text-rose-400"><ArrowUpRight size={14}/></div>
+                <div className="p-1.5 bg-rose-500/20 rounded-xl text-rose-400 group-hover:scale-110 transition-transform"><ArrowUpRight size={14}/></div>
                 <span className="text-[9px] font-black uppercase tracking-[0.2em] text-white/30 italic">Out</span>
               </div>
               <div className="text-right flex-1 min-w-0">
@@ -77,7 +95,7 @@ const HomePage = ({
                   {sensor(formatRupiah(stats.expense))}
                 </p>
               </div>
-            </div>
+            </button>
           </div>
         </div>
       </div>
@@ -99,13 +117,12 @@ const HomePage = ({
         ))}
       </div>
 
-      {/* 3. BUDGET PULSE - IMPROVED: HORIZONTAL SLIDING DNA */}
+      {/* 3. BUDGET PULSE (HORIZONTAL SLIDE) */}
       <div className="space-y-4">
         <div className="flex justify-between items-center px-4">
           <h3 className="text-[9px] font-black italic uppercase tracking-[0.2em] text-slate-500">Budget Pulse</h3>
         </div>
 
-        {/* HORIZONTAL SWIPE CONTAINER */}
         <div className="flex overflow-x-auto no-scrollbar gap-4 px-4 snap-x snap-mandatory">
           {categories.length > 0 ? categories.map(c => {
             const spent = allTransactions
@@ -151,8 +168,8 @@ const HomePage = ({
         </div>
       </div>
 
-      {/* 4. HISTORY SECTION */}
-      <div className="px-1">
+      {/* 4. HISTORY SECTION WITH ANCHOR */}
+      <div id="maestro-history-anchor" className="px-1">
         <div className="bg-white dark:bg-slate-800/40 rounded-[2.5rem] p-1 border border-white dark:border-white/5 shadow-xl">
           <HistorySection 
             allTransactions={allTransactions} 
@@ -164,6 +181,7 @@ const HomePage = ({
             selectedDate={selectedDate}
             setSelectedDate={setSelectedDate}
             handleDeleteTransaction={handleDeleteTransaction}
+            setSelectedTransaction={setSelectedTransaction} // TRIGGER MODAL FROM LIST
           />
         </div>
       </div>

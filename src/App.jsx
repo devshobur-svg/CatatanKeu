@@ -28,14 +28,15 @@ import AddSubModal from "./components/modals/AddSubModal";
 import NotificationModal from "./components/modals/NotificationModal";
 import ExportModal from "./components/modals/ExportModal"; 
 import SecurityLock from "./components/SecurityLock";
-import SecurityModal from "./components/modals/SecurityModal"; // Pastikan file ini sudah dibuat
+import SecurityModal from "./components/modals/SecurityModal";
+import TransactionDetailModal from "./components/modals/TransactionDetailModal"; // NEW FILE
 
 function App() {
   // --- 1. SECURITY & AUTH STATES ---
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [isLocked, setIsLocked] = useState(true); 
-  const [showSecurityModal, setShowSecurityModal] = useState(false); // STATE TRIGGER PIN MODAL
+  const [showSecurityModal, setShowSecurityModal] = useState(false);
 
   // --- 2. UI & DATA STATES ---
   const [activeTab, setActiveTab] = useState("home");
@@ -44,7 +45,6 @@ function App() {
   const [historyFilter, setHistoryFilter] = useState("all"); 
   const [selectedDate, setSelectedDate] = useState(""); 
   
-  // AVATAR SYSTEM (Persisten via LocalStorage)
   const [userAvatar, setUserAvatar] = useState(() => localStorage.getItem("fin_avatar") || "👤");
   
   const [wallets, setWallets] = useState([]);
@@ -52,6 +52,9 @@ function App() {
   const [allTransactions, setAllTransactions] = useState([]); 
   const [subscriptions, setSubscriptions] = useState([]); 
   
+  // NEW STATE: FOR INTERACTIVE DETAILS
+  const [selectedTransaction, setSelectedTransaction] = useState(null);
+
   const [showInsight, setShowInsight] = useState(false);
   const [showBalance, setShowBalance] = useState(true);
   const [showAddTransaction, setShowAddTransaction] = useState(false);
@@ -72,7 +75,6 @@ function App() {
 
   const t = TRANSLATIONS[lang];
 
-  // Helper UI
   const getDynamicFontSize = (length) => {
     if (length > 15) return "text-2xl";
     if (length > 12) return "text-3xl";
@@ -183,6 +185,14 @@ function App() {
     showNotice("Tersimpan!");
   };
 
+  const handleDeleteTransaction = async (id) => {
+    if(window.confirm("Hapus transaksi ini?")) {
+      await deleteDoc(doc(db, "transactions", id));
+      showNotice("Dihapus!");
+      if(selectedTransaction?.id === id) setSelectedTransaction(null);
+    }
+  };
+
   const handleSaveWallet = async (walletData) => {
     if (!walletData.name || walletData.balance === "") {
         return showNotice("Lengkapi data dulu, bro!", "error");
@@ -223,19 +233,16 @@ function App() {
     } catch (err) { showNotice("Gagal menyimpan", "error"); }
   };
 
-  // --- NEW: HANDLE UPDATE PIN ---
   const handleUpdatePin = (newPin) => {
     localStorage.setItem("user_pin", newPin);
     showNotice("Security PIN Updated!", "success");
     setShowSecurityModal(false);
   };
 
-  // --- IMPROVED EXPORT PDF (THE WEALTH SUMMARY) ---
   const handleExportPDF = (filters) => {
     try {
       const docPDF = new jsPDF();
       const fileName = `Report_Maestro_${new Date().getTime()}.pdf`;
-      
       const reportData = allTransactions.filter(tr => {
         const dateObj = tr.createdAt?.seconds ? new Date(tr.createdAt.seconds * 1000) : new Date(tr.createdAt);
         const trDate = dateObj.toISOString().split('T')[0];
@@ -248,7 +255,6 @@ function App() {
 
       if (reportData.length === 0) return showNotice("Data tidak ditemukan!", "error");
 
-      // HEADER BRANDING
       docPDF.setFillColor(15, 23, 42); docPDF.rect(0, 0, 210, 50, 'F');
       docPDF.setTextColor(255, 255, 255);
       docPDF.setFontSize(24); docPDF.setFont("helvetica", "bold");
@@ -257,7 +263,6 @@ function App() {
       docPDF.text(`Periode: ${filters.startDate || 'Awal'} s/d ${filters.endDate || 'Sekarang'}`, 15, 38);
       docPDF.text(`Generated for ${user?.displayName || 'Master User'}`, 15, 43);
 
-      // WEALTH SUMMARY HEADER
       const reportInc = reportData.filter(t => t.type === 'income').reduce((a, b) => a + Number(b.amount), 0);
       const reportExp = reportData.filter(t => t.type === 'expense').reduce((a, b) => a + Number(b.amount), 0);
       const savingsRate = reportInc > 0 ? Math.round(((reportInc - reportExp) / reportInc) * 100) : 0;
@@ -279,10 +284,7 @@ function App() {
         tr.createdAt?.seconds ? new Date(tr.createdAt.seconds * 1000).toLocaleDateString('id-ID') : '-',
         tr.category.toUpperCase(),
         tr.note ? tr.note.replace("AI Voice: ", "").replace("Voice: ", "").substring(0, 45) : "-",
-        { 
-          content: `${tr.type === 'income' ? '+' : '-'} Rp ${formatRupiah(tr.amount)}`,
-          styles: { textColor: tr.type === 'income' ? [5, 150, 105] : [225, 29, 72], fontStyle: 'bold' } 
-        }
+        { content: `${tr.type === 'income' ? '+' : '-'} Rp ${formatRupiah(tr.amount)}`, styles: { textColor: tr.type === 'income' ? [5, 150, 105] : [225, 29, 72], fontStyle: 'bold' } }
       ]);
 
       autoTable(docPDF, {
@@ -291,12 +293,7 @@ function App() {
         body: tableBody,
         theme: 'grid',
         headStyles: { fillColor: [15, 23, 42], fontSize: 9, halign: 'center' },
-        columnStyles: {
-          0: { cellWidth: 25, halign: 'center' },
-          1: { cellWidth: 35 },
-          2: { cellWidth: 'auto' },
-          3: { cellWidth: 40, halign: 'right' }
-        },
+        columnStyles: { 0: { cellWidth: 25, halign: 'center' }, 1: { cellWidth: 35 }, 3: { cellWidth: 40, halign: 'right' } },
         styles: { fontSize: 8, cellPadding: 4, valign: 'middle' }
       });
 
@@ -331,10 +328,7 @@ function App() {
               <h1 className="text-xl font-black tracking-tighter italic uppercase">Finansialku.</h1>
           </div>
           <div className="flex items-center gap-2">
-              <button 
-                onClick={() => setActiveTab('profile')} 
-                className="w-10 h-10 bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 active:scale-90 transition-all flex items-center justify-center text-xl"
-              >
+              <button onClick={() => setActiveTab('profile')} className="w-10 h-10 bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 active:scale-90 transition-all flex items-center justify-center text-xl">
                 {userAvatar}
               </button>
               <button onClick={() => setDarkMode(!darkMode)} className="p-2 bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 active:scale-90 transition-all">{darkMode ? <Sun size={20} className="text-yellow-400"/> : <Moon size={20} className="text-slate-600"/>}</button>
@@ -343,24 +337,16 @@ function App() {
       )}
 
       <div className={`flex-1 overflow-y-auto no-scrollbar pb-40 ${activeTab === "home" ? "px-6" : ""} ${activeTab !== "profile" ? "pt-28" : ""}`}>
-        {activeTab === "home" && <HomePage stats={stats} t={t} formatRupiah={formatRupiah} showBalance={showBalance} setShowBalance={setShowBalance} setShowScanner={setShowScanner} setShowSplitModal={setShowSplitModal} setShowInsight={setShowInsight} categories={categories} allTransactions={allTransactions} historyFilter={historyFilter} setHistoryFilter={setHistoryFilter} setShowNotif={setShowNotif} shareWhatsApp={() => setShowExportModal(true)} selectedDate={selectedDate} setSelectedDate={setSelectedDate} handleDeleteTransaction={async (id) => { if(window.confirm("Hapus?")) { await deleteDoc(doc(db, "transactions", id)); showNotice("Dihapus!"); } }} />}
+        {activeTab === "home" && <HomePage stats={stats} t={t} formatRupiah={formatRupiah} showBalance={showBalance} setShowBalance={setShowBalance} setShowScanner={setShowScanner} setShowSplitModal={setShowSplitModal} setShowInsight={setShowInsight} categories={categories} allTransactions={allTransactions} historyFilter={historyFilter} setHistoryFilter={setHistoryFilter} setShowNotif={setShowNotif} shareWhatsApp={() => setShowExportModal(true)} selectedDate={selectedDate} setSelectedDate={setSelectedDate} handleDeleteTransaction={handleDeleteTransaction} setSelectedTransaction={setSelectedTransaction} />}
         {activeTab === "wallet" && <WalletPage wallets={wallets} allTransactions={allTransactions} formatRupiah={formatRupiah} showAddWallet={showAddWallet} setShowAddWallet={setShowAddWallet} handleDeleteWallet={async (id) => { if(window.confirm("Hapus?")) { await deleteDoc(doc(db, "wallets", id)); showNotice("Dihapus!"); } }} handleEditWallet={(w) => { setEditingWalletId(w.id); setShowAddWallet(true); }} onAddWallet={handleSaveWallet} onUpdateWallet={handleSaveWallet} editingWallet={wallets.find(w => w.id === editingWalletId)} setEditingWallet={(val) => setEditingWalletId(val?.id || null)} />}
         {activeTab === "category" && <CategoryPage categories={categories} allTransactions={allTransactions} formatRupiah={formatRupiah} setShowAddCategory={setShowAddCategory} t={t} handleDeleteCategory={async (id) => { if(window.confirm("Hapus?")) { await deleteDoc(doc(db, "categories", id)); showNotice("Dihapus!"); } }} />}
         {activeTab === "recurring" && <SubscriptionPage subs={subscriptions} formatRupiah={formatRupiah} setShowAddSub={setShowAddSub} handleDeleteSub={async (id) => { if(window.confirm("Hapus?")) { await deleteDoc(doc(db, "subscriptions", id)); showNotice("Dihapus!"); } }} />}
         {activeTab === "profile" && (
           <ProfilePage 
-            user={user} 
-            t={t} 
-            lang={lang} setLang={setLang} 
-            darkMode={darkMode} setDarkMode={setDarkMode} 
-            setActiveTab={setActiveTab} 
-            shareWhatsApp={() => setShowExportModal(true)}
-            currentAvatar={userAvatar} 
-            setUserAvatar={(ava) => { 
-              setUserAvatar(ava);
-              localStorage.setItem("fin_avatar", ava);
-            }}
-            setShowSecurityModal={setShowSecurityModal} // PROPS BARU
+            user={user} t={t} lang={lang} setLang={setLang} darkMode={darkMode} setDarkMode={setDarkMode} 
+            setActiveTab={setActiveTab} shareWhatsApp={() => setShowExportModal(true)}
+            currentAvatar={userAvatar} setUserAvatar={(ava) => { setUserAvatar(ava); localStorage.setItem("fin_avatar", ava); }}
+            setShowSecurityModal={setShowSecurityModal} 
           />
         )}
       </div>
@@ -384,7 +370,6 @@ function App() {
           </div>
       </div>
 
-      {/* MODALS */}
       <NotificationModal show={showNotif} setShow={setShowNotif} notifications={allTransactions.slice(0,3)} formatRupiah={formatRupiah} />
       <ScannerModal show={showScanner} setShow={setShowScanner} setForm={setForm} setShowAddTransaction={setShowAddTransaction} showNotice={showNotice} />
       <SplitBillModal show={showSplitModal} setShow={setShowSplitModal} formatRupiah={formatRupiah} showNotice={showNotice} />
@@ -393,12 +378,15 @@ function App() {
       <AddTransactionModal show={showAddTransaction} setShow={setShowAddTransaction} form={form} setForm={setForm} categories={categories} wallets={wallets} handleSave={handleSaveTransaction} formatRupiah={formatRupiah} t={t} getDynamicFontSize={getDynamicFontSize} />
       <AddCategoryModal show={showAddCategory} setShow={setShowAddCategory} newCat={newCat} setNewCat={setNewCat} handleNumpad={handleNumpad} handleSave={async () => { if(!newCat.name || !newCat.limit) return showNotice("Lengkapi data dulu, bro!", "error"); await addDoc(collection(db, "categories"), { ...newCat, limit: Number(newCat.limit), userId: user.uid, createdAt: new Date() }); setShowAddCategory(false); setNewCat({name:"", limit:""}); showNotice("Ditambahkan!"); }} formatRupiah={formatRupiah} t={t} getDynamicFontSize={getDynamicFontSize} />
       <AddSubModal show={showAddSub} setShow={setShowAddSub} newSub={newSub} setNewSub={setNewSub} handleSave={handleSaveSub} formatRupiah={formatRupiah} />
+      <SecurityModal show={showSecurityModal} setShow={setShowSecurityModal} onUpdatePin={handleUpdatePin} />
       
-      {/* SECURITY MODAL */}
-      <SecurityModal 
-        show={showSecurityModal} 
-        setShow={setShowSecurityModal} 
-        onUpdatePin={handleUpdatePin} 
+      {/* INTERACTIVE TRANSACTION DETAIL MODAL */}
+      <TransactionDetailModal 
+        transaction={selectedTransaction} 
+        onClose={() => setSelectedTransaction(null)} 
+        onDelete={handleDeleteTransaction}
+        formatRupiah={formatRupiah}
+        wallets={wallets}
       />
 
       {toast.show && (

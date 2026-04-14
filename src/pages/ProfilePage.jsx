@@ -1,15 +1,16 @@
 import React, { useState } from "react";
 import { 
   User, Shield, Globe, Moon, Sun, LogOut, 
-  ChevronRight, Camera, Lock
+  ChevronRight, Camera, Lock, ShieldCheck // <--- TADI KURANG INI BRO!
 } from "lucide-react";
-import { auth } from "../lib/firebase"; // Pastikan path firebase lo bener
+import { auth } from "../lib/firebase"; 
 
 const AVATAR_LIST = ["👤", "🦁", "🦊", "🐻", "🐼", "🦄", "🐲", "🐱"];
 
 const ProfilePage = ({ 
   user, t, lang, setLang, darkMode, setDarkMode, 
-  shareWhatsApp, currentAvatar, setUserAvatar 
+  shareWhatsApp, currentAvatar, setUserAvatar,
+  setShowSecurityModal 
 }) => {
   const [showPicker, setShowPicker] = useState(false);
 
@@ -22,7 +23,7 @@ const ProfilePage = ({
   };
 
   return (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-5 duration-500 pb-32 px-4">
+    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-5 duration-500 pb-32 px-4 relative z-10">
       
       {/* 1. IDENTITY CARD */}
       <div className="relative pt-10 pb-6 flex flex-col items-center">
@@ -32,7 +33,7 @@ const ProfilePage = ({
           </div>
           <button 
             onClick={() => setShowPicker(!showPicker)}
-            className="absolute -bottom-2 -right-2 p-3 bg-white dark:bg-slate-700 rounded-2xl shadow-xl text-blue-600 border border-slate-100 dark:border-white/5 active:scale-90 transition-all"
+            className="absolute -bottom-2 -right-2 p-3 bg-white dark:bg-slate-700 rounded-2xl shadow-xl text-blue-600 border border-slate-100 dark:border-white/5 active:scale-90 transition-all z-20"
           >
             <Camera size={18} />
           </button>
@@ -50,7 +51,7 @@ const ProfilePage = ({
 
       {/* 2. AVATAR PICKER */}
       {showPicker && (
-        <div className="bg-white dark:bg-slate-800/50 backdrop-blur-xl p-6 rounded-[2.5rem] border border-blue-500/20 shadow-xl animate-in zoom-in-95">
+        <div className="bg-white dark:bg-slate-800/50 backdrop-blur-xl p-6 rounded-[2.5rem] border border-blue-500/20 shadow-xl animate-in zoom-in-95 z-[100] relative">
           <div className="grid grid-cols-4 gap-4">
             {AVATAR_LIST.map((ava) => (
               <button
@@ -94,8 +95,8 @@ const ProfilePage = ({
               onChange={(e) => setLang(e.target.value)}
               className="bg-transparent text-[11px] font-black uppercase outline-none text-blue-600 cursor-pointer appearance-none border-none text-right pr-2"
             >
-              <option value="id" className="bg-slate-900">INDONESIA</option>
-              <option value="en" className="bg-slate-900">ENGLISH</option>
+              <option value="id" className="bg-slate-900 text-white">INDONESIA</option>
+              <option value="en" className="bg-slate-900 text-white">ENGLISH</option>
             </select>
           </div>
         </div>
@@ -106,18 +107,23 @@ const ProfilePage = ({
         <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 px-4 italic">Security & Session</p>
         <div className="bg-white dark:bg-slate-800 rounded-[2.5rem] border border-white dark:border-white/5 overflow-hidden shadow-xl">
           
-          <button onClick={shareWhatsApp} className="w-full p-6 flex items-center justify-between border-b border-slate-50 dark:border-white/5 active:bg-slate-50">
+          <button onClick={shareWhatsApp} className="w-full p-6 flex items-center justify-between border-b border-slate-50 dark:border-white/5 active:bg-slate-50 transition-all">
             <div className="flex items-center gap-4">
-              <div className="p-3 bg-indigo-500/10 text-indigo-500 rounded-2xl"><Shield size={20}/></div>
+              <div className="p-3 bg-indigo-500/10 text-indigo-500 rounded-2xl"><ShieldCheck size={20}/></div>
               <span className="text-xs font-black uppercase text-slate-700 dark:text-slate-200">Maestro Report</span>
             </div>
             <ChevronRight size={18} className="text-slate-300"/>
           </button>
 
-          <button className="w-full p-6 flex items-center justify-between border-b border-slate-50 dark:border-white/5 active:bg-slate-50">
+          <button 
+            onClick={() => setShowSecurityModal(true)}
+            className="w-full p-6 flex items-center justify-between border-b border-slate-50 dark:border-white/5 active:bg-slate-100 dark:active:bg-white/5 transition-all relative z-30"
+          >
             <div className="flex items-center gap-4">
               <div className="p-3 bg-blue-500/10 text-blue-500 rounded-2xl"><Lock size={20}/></div>
-              <span className="text-xs font-black uppercase text-slate-700 dark:text-slate-200">Change PIN Access</span>
+              <span className="text-xs font-black uppercase text-slate-700 dark:text-slate-200">
+                Change PIN <span className="text-blue-600 italic">Access</span>
+              </span>
             </div>
             <ChevronRight size={18} className="text-slate-300"/>
           </button>
@@ -128,7 +134,7 @@ const ProfilePage = ({
           >
             <div className="flex items-center gap-4">
               <div className="p-3 bg-rose-500/10 rounded-2xl"><LogOut size={20}/></div>
-              <span className="text-xs font-black uppercase italic tracking-widest text-rose-500">Sign Out Session</span>
+              <span className="text-xs font-black uppercase italic tracking-widest">Sign Out Session</span>
             </div>
           </button>
         </div>
