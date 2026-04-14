@@ -28,12 +28,14 @@ import AddSubModal from "./components/modals/AddSubModal";
 import NotificationModal from "./components/modals/NotificationModal";
 import ExportModal from "./components/modals/ExportModal"; 
 import SecurityLock from "./components/SecurityLock";
+import SecurityModal from "./components/modals/SecurityModal"; // Pastikan file ini sudah dibuat
 
 function App() {
   // --- 1. SECURITY & AUTH STATES ---
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [isLocked, setIsLocked] = useState(true); 
+  const [showSecurityModal, setShowSecurityModal] = useState(false); // STATE TRIGGER PIN MODAL
 
   // --- 2. UI & DATA STATES ---
   const [activeTab, setActiveTab] = useState("home");
@@ -221,6 +223,13 @@ function App() {
     } catch (err) { showNotice("Gagal menyimpan", "error"); }
   };
 
+  // --- NEW: HANDLE UPDATE PIN ---
+  const handleUpdatePin = (newPin) => {
+    localStorage.setItem("user_pin", newPin);
+    showNotice("Security PIN Updated!", "success");
+    setShowSecurityModal(false);
+  };
+
   // --- IMPROVED EXPORT PDF (THE WEALTH SUMMARY) ---
   const handleExportPDF = (filters) => {
     try {
@@ -351,6 +360,7 @@ function App() {
               setUserAvatar(ava);
               localStorage.setItem("fin_avatar", ava);
             }}
+            setShowSecurityModal={setShowSecurityModal} // PROPS BARU
           />
         )}
       </div>
@@ -374,6 +384,7 @@ function App() {
           </div>
       </div>
 
+      {/* MODALS */}
       <NotificationModal show={showNotif} setShow={setShowNotif} notifications={allTransactions.slice(0,3)} formatRupiah={formatRupiah} />
       <ScannerModal show={showScanner} setShow={setShowScanner} setForm={setForm} setShowAddTransaction={setShowAddTransaction} showNotice={showNotice} />
       <SplitBillModal show={showSplitModal} setShow={setShowSplitModal} formatRupiah={formatRupiah} showNotice={showNotice} />
@@ -382,6 +393,13 @@ function App() {
       <AddTransactionModal show={showAddTransaction} setShow={setShowAddTransaction} form={form} setForm={setForm} categories={categories} wallets={wallets} handleSave={handleSaveTransaction} formatRupiah={formatRupiah} t={t} getDynamicFontSize={getDynamicFontSize} />
       <AddCategoryModal show={showAddCategory} setShow={setShowAddCategory} newCat={newCat} setNewCat={setNewCat} handleNumpad={handleNumpad} handleSave={async () => { if(!newCat.name || !newCat.limit) return showNotice("Lengkapi data dulu, bro!", "error"); await addDoc(collection(db, "categories"), { ...newCat, limit: Number(newCat.limit), userId: user.uid, createdAt: new Date() }); setShowAddCategory(false); setNewCat({name:"", limit:""}); showNotice("Ditambahkan!"); }} formatRupiah={formatRupiah} t={t} getDynamicFontSize={getDynamicFontSize} />
       <AddSubModal show={showAddSub} setShow={setShowAddSub} newSub={newSub} setNewSub={setNewSub} handleSave={handleSaveSub} formatRupiah={formatRupiah} />
+      
+      {/* SECURITY MODAL */}
+      <SecurityModal 
+        show={showSecurityModal} 
+        setShow={setShowSecurityModal} 
+        onUpdatePin={handleUpdatePin} 
+      />
 
       {toast.show && (
           <div className="fixed top-12 left-6 right-6 z-[99999] animate-in slide-in-from-top">
